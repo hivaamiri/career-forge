@@ -143,11 +143,11 @@ job-pulse/
 - [x] **Task 1.5:** Write sanity check script to verify Telegram test message transmission.
 
 ### Task Group 2: Email Ingestion (StepStone, XING, LinkedIn)
-- [ ] **Task 2.1:** Implement `src/ingest/email_stream.py` to connect via IMAP with app-password authentication.
-- [ ] **Task 2.2:** Build parsers for StepStone, LinkedIn, and XING notification email formats.
-- [ ] **Task 2.3:** Implement canonical URL unwrap function (`HEAD` redirects resolver).
-- [ ] **Task 2.4:** Build `src/matcher.py` (title/keyword regex checks).
-- [ ] **Task 2.5:** Connect email stream -> filter -> SQLite -> Telegram alert.
+- [x] **Task 2.1:** Implement `src/ingest/email_stream.py` to connect via IMAP with app-password authentication.
+- [x] **Task 2.2:** Build parsers for StepStone, LinkedIn, and XING notification email formats.
+- [x] **Task 2.3:** Implement canonical URL unwrap function (`HEAD` redirects resolver).
+- [x] **Task 2.4:** Build `src/matcher.py` (title/keyword regex checks).
+- [x] **Task 2.5:** Connect email stream -> filter -> SQLite -> Telegram alert.
 
 ### Task Group 3: Direct API Ingestion (Arbeitsagentur & Personio)
 - [ ] **Task 3.1:** Implement `src/ingest/arbeitsagentur.py` using `rest.arbeitsagentur.de` open search.
