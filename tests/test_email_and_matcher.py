@@ -23,20 +23,20 @@ def test_matcher_logic():
     matcher = JobMatcher()
 
     # Inclusion match
-    res1 = matcher.evaluate("Senior Backend Engineer", location="Berlin")
+    res1 = matcher.evaluate("Senior Chemiker Analytik", location="Berlin")
     assert res1.matched is True
-    assert "backend" in [i.lower() for i in res1.matched_inclusions]
+    assert any("chemik" in i.lower() or "analytik" in i.lower() for i in res1.matched_inclusions)
 
-    # Systems engineer match
-    res2 = matcher.evaluate("Staff Cloud Systems Engineer", location="Remote")
+    # Laborant match
+    res2 = matcher.evaluate("Chemielaborant Qualitätskontrolle", location="Remote")
     assert res2.matched is True
 
     # Exclusion match (intern / werkstudent)
-    res_ex1 = matcher.evaluate("Backend Engineer Intern", location="Berlin")
+    res_ex1 = matcher.evaluate("Chemielaborant Intern", location="Berlin")
     assert res_ex1.matched is False
     assert any("intern" in ex.lower() for ex in res_ex1.matched_exclusions)
 
-    res_ex2 = matcher.evaluate("DevOps Werkstudent / Working Student", location="Munich")
+    res_ex2 = matcher.evaluate("Laborant Werkstudent / Working Student", location="Munich")
     assert res_ex2.matched is False
 
     # Irrelevant role (neither inclusion nor exclusion)
@@ -44,7 +44,7 @@ def test_matcher_logic():
     assert res_irr.matched is False
 
     # Location mismatch (when location is explicitly provided and outside scope)
-    res_loc = matcher.evaluate("Backend Engineer", location="Tokyo, Japan")
+    res_loc = matcher.evaluate("Chemiker", location="Tokyo, Japan")
     assert res_loc.matched is False
     assert "Location 'Tokyo, Japan' did not match" in res_loc.reason
 
@@ -188,11 +188,11 @@ def test_email_stream_pipeline_end_to_end(mock_url_resolver):
 
         sample_mime_email = (
             b"From: StepStone Job-Agent <jobagent@stepstone.de>\r\n"
-            b"Subject: 1 neue Stellenangebote fur Backend Engineer\r\n"
+            b"Subject: 1 neue Stellenangebote fur Chemielaborant\r\n"
             b"MIME-Version: 1.0\r\n"
             b"Content-Type: text/html; charset=utf-8\r\n\r\n"
-            b'<html><body><a href="https://stepstone.de/stellenangebote--Backend-Engineer--123?utm=x">Backend Engineer</a>'
-            b'<div>CloudScale AG</div><div>Berlin</div></body></html>'
+            b'<html><body><a href="https://stepstone.de/stellenangebote--Chemielaborant--123?utm=x">Chemielaborant</a>'
+            b'<div>Bayer AG</div><div>Berlin</div></body></html>'
         )
 
         mock_client.fetch.return_value = (
@@ -205,8 +205,8 @@ def test_email_stream_pipeline_end_to_end(mock_url_resolver):
 
         assert len(discovered) == 1
         job = discovered[0]
-        assert job.title == "Backend Engineer"
-        assert job.company == "CloudScale AG"
+        assert job.title == "Chemielaborant"
+        assert job.company == "Bayer AG"
         assert job.source == "stepstone"
 
         # Check DB was written

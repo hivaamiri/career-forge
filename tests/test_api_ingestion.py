@@ -22,7 +22,7 @@ def test_arbeitsagentur_parsing_and_polling():
             telegram={"bot_token": "mock-token", "chat_id": "12345"},
             arbeitsagentur={
                 "enabled": True,
-                "keywords": ["backend engineer"],
+                "keywords": ["chemielaborant"],
                 "locations": ["Berlin"],
             },
         )
@@ -34,17 +34,17 @@ def test_arbeitsagentur_parsing_and_polling():
 
         mock_raw_item = {
             "refnr": "10000-9988776655-S",
-            "titel": "Senior Backend Cloud Engineer",
-            "beruf": "Softwareentwickler/in",
-            "arbeitgeber": "Deutsche Cloud Systems AG",
+            "titel": "Chemielaborant Analytik",
+            "beruf": "Chemielaborant/in",
+            "arbeitgeber": "Deutsche Chemie AG",
             "arbeitsort": {"ort": "Berlin", "region": "Berlin"},
             "aktuelleVeroeffentlichungsdatum": "2026-10-19",
         }
 
         parsed = poller.parse_job_item(mock_raw_item)
         assert parsed is not None
-        assert parsed["title"] == "Senior Backend Cloud Engineer"
-        assert parsed["company"] == "Deutsche Cloud Systems AG"
+        assert parsed["title"] == "Chemielaborant Analytik"
+        assert parsed["company"] == "Deutsche Chemie AG"
         assert parsed["location"] == "Berlin"
         assert parsed["canonical_url"] == "https://www.arbeitsagentur.de/jobsuche/jobdetail/10000-9988776655-S"
 
@@ -54,7 +54,7 @@ def test_arbeitsagentur_parsing_and_polling():
 
         assert len(discovered) == 1
         record = discovered[0]
-        assert record.title == "Senior Backend Cloud Engineer"
+        assert record.title == "Chemielaborant Analytik"
         assert record.source == "arbeitsagentur"
 
         # Check deduplication on second poll
@@ -113,12 +113,12 @@ def test_ats_poller_flow():
         mock_items = [
             {
                 "id": "111",
-                "title": "Senior Systems Engineer (Linux)",
+                "title": "Senior Chemiker (Biotechnologie)",
                 "company": "Acmetech",
                 "location": "Berlin",
                 "url": "https://acmetech.jobs.personio.de/job/111",
                 "canonical_url": "https://acmetech.jobs.personio.de/job/111",
-                "snippet": "Linux, distributed systems",
+                "snippet": "Biochemie, Laborpraxis",
             }
         ]
 
@@ -126,7 +126,7 @@ def test_ats_poller_flow():
             discovered = poller.poll()
 
         assert len(discovered) == 1
-        assert discovered[0].title == "Senior Systems Engineer (Linux)"
+        assert discovered[0].title == "Senior Chemiker (Biotechnologie)"
         assert db.is_seen(discovered[0].canonical_url) is True
         mock_notifier.send_job_alert.assert_called_once()
 

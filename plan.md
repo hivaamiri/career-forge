@@ -82,8 +82,8 @@ An automated, 24/7 background job discovery service tailored for the German engi
 
 ### 2.4 Heuristic Matcher (`src/matcher.py`)
 Applies token and regex matching against title, location, and snippets:
-* **Inclusion Patterns:** `(?i)\b(backend|software\s*engineer|systems\s*engineer|network|devops|cloud|infrastructure|linux|platform)\b`
-* **Exclusion Patterns:** `(?i)\b(intern|praktikant|working\s*student|werkstudent|trainee|sales|marketing|frontend\s*only)\b`
+* **Inclusion Patterns:** `(?i)\b(chemie|chemiker|chemielaborant|laborant|analytik|analytische\s*chemie|biochemie|biotechnologie|prozessentwicklung|qualitätskontrolle|cta|bta)\b`
+* **Exclusion Patterns:** `(?i)\b(intern|praktikant|working\s*student|werkstudent|trainee|sales|marketing|vertrieb|kaufmännisch|kellner|fahrer)\b`
 * **Location Filtering:** Target region, Germany-wide, or Remote.
 
 ### 2.5 Telegram Dispatcher (`src/notifier.py`)

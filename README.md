@@ -83,9 +83,9 @@ You can configure scraping keywords, locations, search radius, and target compan
 | Command | Description | Example |
 | :--- | :--- | :--- |
 | `/config` | View active keywords, locations, radius, and ATS targets | `/config` |
-| `/add_keyword <text>` | Add one or more search keywords | `/add_keyword rust, distributed systems` |
-| `/del_keyword <text>` | Remove a keyword | `/del_keyword devops` |
-| `/set_keywords <list>` | Overwrite all search keywords | `/set_keywords backend, python, cloud` |
+| `/add_keyword <text>` | Add one or more search keywords | `/add_keyword biochemie, cta` |
+| `/del_keyword <text>` | Remove a keyword | `/del_keyword qualitätskontrolle` |
+| `/set_keywords <list>` | Overwrite all search keywords | `/set_keywords chemie, chemielaborant, analytik` |
 | `/add_location <city>` | Add target city or region | `/add_location Stuttgart, Köln` |
 | `/del_location <city>` | Remove a location | `/del_location Hamburg` |
 | `/set_locations <list>` | Overwrite all locations | `/set_locations Berlin, München, Remote` |

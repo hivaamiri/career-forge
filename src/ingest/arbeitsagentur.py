@@ -98,7 +98,7 @@ class ArbeitsagenturPoller:
             or item.get("titel")
             or item.get("beruf")
             or item.get("hauptberuf")
-            or "Software Engineering"
+            or "Chemie / Labor Position"
         )
         company = item.get("firma") or item.get("arbeitgeber") or "Unbekannter Arbeitgeber"
 

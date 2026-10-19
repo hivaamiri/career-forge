@@ -29,13 +29,18 @@ class ArbeitsagenturConfig(BaseModel):
     enabled: bool = True
     keywords: List[str] = Field(
         default_factory=lambda: [
-            "backend engineer",
-            "software engineer",
-            "systems engineer",
-            "devops",
-            "cloud engineer",
-            "platform engineer",
-            "linux",
+            "chemie",
+            "chemiker",
+            "chemielaborant",
+            "laborant",
+            "analytik",
+            "analytische chemie",
+            "prozessentwicklung",
+            "biochemie",
+            "biotechnologie",
+            "qualitätskontrolle",
+            "cta",
+            "bta",
         ]
     )
     locations: List[str] = Field(
@@ -54,12 +59,12 @@ class ATSConfig(BaseModel):
 class MatcherConfig(BaseModel):
     inclusion_patterns: List[str] = Field(
         default_factory=lambda: [
-            r"(?i)\b(backend|software\s*engineer|systems\s*engineer|network|devops|cloud|infrastructure|linux|platform)\b"
+            r"(?i)\b(chemie|chemiker|chemikerin|chemielaborant|chemielaborantin|laborant|laborantin|labor|laborpraxis|laborleitung|laborleiter|analytik|analytiker|analytische\s*chemie|biochemie|biotechnologie|prozessentwicklung|formulation|aufreinigung|qualitätskontrolle|materialprüfung|analytiklabor|cta|bta|synthese|galenik|qc\s*analyst|chemisch|chemisch-technisch|pharmazeutisch)\b"
         ]
     )
     exclusion_patterns: List[str] = Field(
         default_factory=lambda: [
-            r"(?i)\b(intern|praktikant|working\s*student|werkstudent|trainee|sales|marketing|frontend\s*only)\b"
+            r"(?i)\b(intern|praktikant|working\s*student|werkstudent|trainee|sales|marketing|vertrieb|kaufmännisch|kellner|fahrer)\b"
         ]
     )
     locations: List[str] = Field(
