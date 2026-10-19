@@ -72,7 +72,7 @@ class TelegramNotifier:
         parse_mode: str = "HTML",
         disable_web_page_preview: bool = False,
     ) -> Dict[str, Any]:
-        """Send a message to the configured Telegram chat."""
+        """Send a message to the configured Telegram chat with 429 rate-limit backoff."""
         url = f"{self.base_url}/sendMessage"
         payload: Dict[str, Any] = {
             "chat_id": self.chat_id,
@@ -83,15 +83,32 @@ class TelegramNotifier:
         if reply_markup:
             payload["reply_markup"] = reply_markup
 
-        with httpx.Client(timeout=self.timeout) as client:
-            response = client.post(url, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            if not data.get("ok"):
-                raise RuntimeError(
-                    f"Telegram API error: {data.get('description', 'Unknown error')}"
-                )
-            return data
+        import time
+
+        for attempt in range(4):
+            with httpx.Client(timeout=self.timeout) as client:
+                response = client.post(url, json=payload)
+                if response.status_code == 429:
+                    retry_after = 2
+                    try:
+                        retry_after = response.json().get("parameters", {}).get("retry_after", 2)
+                    except Exception:
+                        pass
+                    logger.warning(f"Telegram rate limit hit. Sleeping for {retry_after}s...")
+                    time.sleep(retry_after)
+                    continue
+
+                response.raise_for_status()
+                data = response.json()
+                if not data.get("ok"):
+                    raise RuntimeError(
+                        f"Telegram API error: {data.get('description', 'Unknown error')}"
+                    )
+                # Gentle pacing between messages to respect Telegram limits
+                time.sleep(0.4)
+                return data
+
+        raise RuntimeError("Failed to send Telegram message after rate limit retries.")
 
     def send_job_alert(self, job: JobRecord) -> Dict[str, Any]:
         """Dispatch a formatted job posting alert with inline action buttons."""
