@@ -152,23 +152,24 @@ class Database:
         return job_id, inserted
 
     def update_status(self, job_id: str, new_status: str) -> bool:
-        """Update job lifecycle status (e.g. notified -> queued_career_ops | applied | dismissed)."""
+        """Update job lifecycle status (supports full ID or prefix)."""
         with self.get_connection() as conn:
             cursor = conn.execute(
-                "UPDATE jobs SET status = ? WHERE id = ?;", (new_status, job_id)
+                "UPDATE jobs SET status = ? WHERE id = ? OR id LIKE ? || '%';",
+                (new_status, job_id, job_id),
             )
             return cursor.rowcount > 0
 
     def get_job(self, job_id: str) -> Optional[JobRecord]:
-        """Fetch a single job record by ID."""
+        """Fetch a single job record by full ID or prefix."""
         with self.get_connection() as conn:
             cursor = conn.execute(
                 """
                 SELECT id, source, title, company, location, url, canonical_url,
                        discovered_at, status, meta_json
-                FROM jobs WHERE id = ? LIMIT 1;
+                FROM jobs WHERE id = ? OR id LIKE ? || '%' LIMIT 1;
                 """,
-                (job_id,),
+                (job_id, job_id),
             )
             row = cursor.fetchone()
             if not row:

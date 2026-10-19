@@ -54,8 +54,13 @@ class TelegramCallbackHandler:
             callback_id = callback.get("id")
             callback_data = callback.get("data", "")
 
-            if callback_data.startswith("queue:"):
+            job_id = None
+            if callback_data.startswith("q:"):
+                job_id = callback_data[len("q:") :].strip()
+            elif callback_data.startswith("queue:"):
                 job_id = callback_data[len("queue:") :].strip()
+
+            if job_id:
                 logger.info(f"Received Queue Career-Ops callback for job_id={job_id}")
 
                 success, message = queue_job_to_careerops(

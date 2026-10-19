@@ -41,13 +41,15 @@ def format_job_message(job: JobRecord) -> str:
 
 def build_job_inline_keyboard(job: JobRecord) -> Dict[str, Any]:
     """Build Telegram inline keyboard with [Open Listing] and [Queue Career-Ops] buttons."""
+    # Telegram restricts callback_data to 64 bytes max. We use 32-char SHA prefix.
+    short_id = job.id[:32] if job.id else ""
     return {
         "inline_keyboard": [
             [
                 {"text": "🌐 Open Listing", "url": job.canonical_url},
                 {
                     "text": "📥 Queue Career-Ops",
-                    "callback_data": f"queue:{job.id}",
+                    "callback_data": f"q:{short_id}",
                 },
             ]
         ]

@@ -18,7 +18,7 @@ from src.notifier import TelegramNotifier
 logger = logging.getLogger(__name__)
 
 ARBEITSAGENTUR_BASE_URL = (
-    "https://rest.arbeitsagentur.de/opensearch/vam-berufe-service/v1/stellenangebote"
+    "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs"
 )
 DEFAULT_HEADERS = {
     "User-Agent": "JobPulse/1.0 (+https://github.com/hivaamiri/career-forge)",
@@ -75,7 +75,7 @@ class ArbeitsagenturPoller:
                 )
                 response.raise_for_status()
                 data = response.json()
-                return data.get("stellenangebote", [])
+                return data.get("ergebnisliste") or data.get("stellenangebote", [])
             except Exception as e:
                 logger.warning(
                     f"Arbeitsagentur query failed for was='{keyword}', wo='{location}': {e}"
@@ -89,24 +89,39 @@ class ArbeitsagenturPoller:
 
     def parse_job_item(self, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Normalize an Arbeitsagentur raw item into job attributes."""
-        refnr = item.get("refnr")
+        refnr = item.get("referenznummer") or item.get("refnr")
         if not refnr:
             return None
 
-        title = item.get("titel") or item.get("beruf") or "Software Engineering"
-        company = item.get("arbeitgeber") or "Unbekannter Arbeitgeber"
+        title = (
+            item.get("stellenangebotsTitel")
+            or item.get("titel")
+            or item.get("beruf")
+            or item.get("hauptberuf")
+            or "Software Engineering"
+        )
+        company = item.get("firma") or item.get("arbeitgeber") or "Unbekannter Arbeitgeber"
 
-        # Resolve location
-        arbeitsort = item.get("arbeitsort") or {}
-        loc_parts = []
-        if isinstance(arbeitsort, dict):
-            ort = arbeitsort.get("ort")
-            region = arbeitsort.get("region")
-            if ort:
-                loc_parts.append(ort)
-            if region and region != ort:
-                loc_parts.append(region)
-        location_str = ", ".join(loc_parts) or "Deutschland"
+        # Resolve location from modern stellenlokationen or legacy arbeitsort
+        location_str = "Deutschland"
+        stellenlokationen = item.get("stellenlokationen")
+        if stellenlokationen and isinstance(stellenlokationen, list) and len(stellenlokationen) > 0:
+            addr = stellenlokationen[0].get("adresse", {})
+            ort = addr.get("ort")
+            region = addr.get("region")
+            parts = [ort]
+            if region and region.lower() != (ort or "").lower():
+                parts.append(region)
+            location_str = ", ".join([p for p in parts if p]) or "Deutschland"
+        else:
+            arbeitsort = item.get("arbeitsort") or {}
+            if isinstance(arbeitsort, dict):
+                ort = arbeitsort.get("ort")
+                region = arbeitsort.get("region")
+                parts = [ort]
+                if region and region.lower() != (ort or "").lower():
+                    parts.append(region)
+                location_str = ", ".join([p for p in parts if p]) or "Deutschland"
 
         # Direct official detail landing page
         canonical_url = f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{refnr}"

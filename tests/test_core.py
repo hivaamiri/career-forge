@@ -148,7 +148,7 @@ def test_telegram_message_formatting():
     assert buttons[0]["text"] == "🌐 Open Listing"
     assert buttons[0]["url"] == "https://linkedin.com/jobs/view/123"
     assert buttons[1]["text"] == "📥 Queue Career-Ops"
-    assert buttons[1]["callback_data"] == "queue:hash123"
+    assert buttons[1]["callback_data"] == "q:hash123"
 
 
 @patch("httpx.Client.post")
@@ -180,4 +180,4 @@ def test_telegram_dispatch(mock_post):
     payload = call_args[1]["json"]
     assert payload["chat_id"] == "12345678"
     assert "CloudNet GmbH" in payload["text"]
-    assert payload["reply_markup"]["inline_keyboard"][0][1]["callback_data"] == "queue:hash456"
+    assert payload["reply_markup"]["inline_keyboard"][0][1]["callback_data"] == "q:hash456"
