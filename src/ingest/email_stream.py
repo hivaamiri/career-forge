@@ -108,7 +108,12 @@ class EmailStreamConsumer:
             host=self.email_config.imap_server,
             port=self.email_config.imap_port,
         )
-        client.login(self.email_config.username, self.email_config.password)
+        username = self.email_config.username.strip()
+        pwd = self.email_config.password.strip()
+        try:
+            client.login(username, pwd)
+        except Exception:
+            client.login(username, pwd.replace(" ", ""))
         return client
 
     def process_inbox(self) -> List[JobRecord]:
