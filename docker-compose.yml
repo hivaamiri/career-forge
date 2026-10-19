@@ -1,0 +1,27 @@
+services:
+  job-pulse:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: job-pulse
+    restart: unless-stopped
+    volumes:
+      # Mount host configuration file (read-only)
+      - ./config/config.yaml:/app/config/config.yaml:ro
+      # Mount persistent SQLite data directory
+      - ./data:/app/data:rw
+      # Mount Career-Ops markdown pipeline
+      - ./career-ops:/app/career-ops:rw
+    environment:
+      - PYTHONUNBUFFERED=1
+      - JOB_PULSE_CONFIG=/app/config/config.yaml
+      # Optional: Override via environment variables or .env file
+      # - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      # - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      # - IMAP_USERNAME=${IMAP_USERNAME}
+      # - IMAP_PASSWORD=${IMAP_PASSWORD}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

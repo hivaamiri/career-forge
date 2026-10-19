@@ -85,6 +85,42 @@ pytest -v
 
 ---
 
+---
+
+## Containerized Deployment (Docker & Docker Compose)
+
+### Using Docker Compose
+1. Ensure your config file exists:
+   ```bash
+   cp config/config.example.yaml config/config.yaml
+   ```
+2. Build and launch the container in the background:
+   ```bash
+   docker compose up -d --build
+   ```
+3. Inspect live logs:
+   ```bash
+   docker compose logs -f job-pulse
+   ```
+4. Stop container:
+   ```bash
+   docker compose down
+   ```
+
+### Using Plain Docker
+```bash
+docker build -t job-pulse:latest .
+docker run -d \
+  --name job-pulse \
+  --restart unless-stopped \
+  -v $(pwd)/config/config.yaml:/app/config/config.yaml:ro \
+  -v $(pwd)/data:/app/data:rw \
+  -v $(pwd)/career-ops:/app/career-ops:rw \
+  job-pulse:latest
+```
+
+---
+
 ## Background Deployment (systemd)
 
 For unattended Linux execution:
