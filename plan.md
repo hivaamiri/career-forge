@@ -150,9 +150,9 @@ job-pulse/
 - [x] **Task 2.5:** Connect email stream -> filter -> SQLite -> Telegram alert.
 
 ### Task Group 3: Direct API Ingestion (Arbeitsagentur & Personio)
-- [ ] **Task 3.1:** Implement `src/ingest/arbeitsagentur.py` using `rest.arbeitsagentur.de` open search.
-- [ ] **Task 3.2:** Implement `src/ingest/ats_poller.py` for target company Personio XML feeds.
-- [ ] **Task 3.3:** Integrate both pollers into periodic execution loop.
+- [x] **Task 3.1:** Implement `src/ingest/arbeitsagentur.py` using `rest.arbeitsagentur.de` open search.
+- [x] **Task 3.2:** Implement `src/ingest/ats_poller.py` for target company Personio XML feeds.
+- [x] **Task 3.3:** Integrate both pollers into periodic execution loop.
 
 ### Task Group 4: Career-Ops Handshake & Automation
 - [ ] **Task 4.1:** Implement `src/bridge_careerops.py` to parse markdown table in `career-ops/data/pipeline.md` and append verified candidates.
