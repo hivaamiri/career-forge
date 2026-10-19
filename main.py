@@ -68,12 +68,39 @@ class Orchestrator:
             config=config,
             db=self.db,
             notifier=self.notifier,
+            on_config_change=self.sync_dynamic_settings,
+            on_sweep_request=self.run_once,
         )
 
         self._running = False
         self._last_email_check = 0.0
         self._last_aa_poll = 0.0
         self._last_ats_poll = 0.0
+
+        # Apply any previously stored dynamic settings on startup
+        self.sync_dynamic_settings()
+
+    def sync_dynamic_settings(self) -> None:
+        """Apply dynamic configuration overrides stored in SQLite."""
+        keywords = self.db.get_setting("keywords", self.config.arbeitsagentur.keywords)
+        locations = self.db.get_setting("locations", self.config.arbeitsagentur.locations)
+        radius = self.db.get_setting("radius_km", self.config.arbeitsagentur.radius_km)
+        companies = self.db.get_setting("personio_companies", self.config.ats.personio_companies)
+
+        # Update Arbeitsagentur poller
+        self.aa_poller.aa_config.keywords = list(keywords)
+        self.aa_poller.aa_config.locations = list(locations)
+        self.aa_poller.aa_config.radius_km = int(radius)
+
+        # Update ATS poller
+        self.ats_poller.ats_config.personio_companies = list(companies)
+
+        # Update Matcher location patterns
+        self.matcher.update_rules(locations=list(locations))
+        logger.info(
+            f"Synced dynamic settings: {len(keywords)} keywords, "
+            f"{len(locations)} locations, radius={radius}km, {len(companies)} ATS companies"
+        )
 
     def run_once(self) -> dict[str, int]:
         """Execute a single pass across all enabled ingestion sources."""

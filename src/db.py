@@ -90,6 +90,15 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value_json TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
 
     def is_seen(self, job_id_or_canonical_url: str) -> bool:
         """Check if a job has already been discovered, either by SHA-256 ID or canonical URL."""
@@ -244,3 +253,50 @@ class Database:
                     )
                 )
             return records
+
+    def set_setting(self, key: str, value: Any) -> None:
+        """Persist or update dynamic setting in SQLite."""
+        val_json = json.dumps(value, ensure_ascii=False)
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO settings (key, value_json, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(key) DO UPDATE SET
+                    value_json = excluded.value_json,
+                    updated_at = CURRENT_TIMESTAMP;
+                """,
+                (key, val_json),
+            )
+
+    def get_setting(self, key: str, default: Any = None) -> Any:
+        """Fetch setting by key from SQLite, falling back to default."""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT value_json FROM settings WHERE key = ? LIMIT 1;", (key,)
+            )
+            row = cursor.fetchone()
+            if not row or row["value_json"] is None:
+                return default
+            try:
+                return json.loads(row["value_json"])
+            except Exception:
+                return default
+
+    def delete_setting(self, key: str) -> bool:
+        """Delete setting override from SQLite."""
+        with self.get_connection() as conn:
+            cursor = conn.execute("DELETE FROM settings WHERE key = ?;", (key,))
+            return cursor.rowcount > 0
+
+    def list_settings(self) -> Dict[str, Any]:
+        """List all active setting overrides."""
+        with self.get_connection() as conn:
+            cursor = conn.execute("SELECT key, value_json FROM settings;")
+            results: Dict[str, Any] = {}
+            for row in cursor.fetchall():
+                try:
+                    results[row["key"]] = json.loads(row["value_json"])
+                except Exception:
+                    results[row["key"]] = row["value_json"]
+            return results

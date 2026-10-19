@@ -39,6 +39,23 @@ class JobMatcher:
                     re.compile(rf"\b{re.escape(clean)}\b", re.IGNORECASE)
                 )
 
+    def update_rules(
+        self,
+        inclusion_patterns: Optional[List[str]] = None,
+        locations: Optional[List[str]] = None,
+    ) -> None:
+        """Update active matching rules dynamically at runtime."""
+        if inclusion_patterns is not None:
+            self.inclusion_patterns = [
+                re.compile(p, re.IGNORECASE) for p in inclusion_patterns if p.strip()
+            ]
+        if locations is not None:
+            self.location_patterns = [
+                re.compile(rf"\b{re.escape(loc.strip())}\b", re.IGNORECASE)
+                for loc in locations
+                if loc.strip()
+            ]
+
     def evaluate(
         self,
         title: str,

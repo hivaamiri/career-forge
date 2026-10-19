@@ -76,6 +76,30 @@ python scripts/test_telegram.py
 
 ---
 
+## Telegram Bot Command Center
+
+You can configure scraping keywords, locations, search radius, and target companies dynamically straight from your Telegram chat:
+
+| Command | Description | Example |
+| :--- | :--- | :--- |
+| `/config` | View active keywords, locations, radius, and ATS targets | `/config` |
+| `/add_keyword <text>` | Add one or more search keywords | `/add_keyword rust, distributed systems` |
+| `/del_keyword <text>` | Remove a keyword | `/del_keyword devops` |
+| `/set_keywords <list>` | Overwrite all search keywords | `/set_keywords backend, python, cloud` |
+| `/add_location <city>` | Add target city or region | `/add_location Stuttgart, Köln` |
+| `/del_location <city>` | Remove a location | `/del_location Hamburg` |
+| `/set_locations <list>` | Overwrite all locations | `/set_locations Berlin, München, Remote` |
+| `/set_radius <km>` | Set Bundesagentur search radius | `/set_radius 75` |
+| `/add_company <slug>` | Add target Personio company feed | `/add_company celonis` |
+| `/del_company <slug>` | Remove Personio company | `/del_company acme` |
+| `/sweep` | Trigger an immediate live scan across all scrapers | `/sweep` |
+| `/reset_config` | Revert all overrides back to `config.yaml` defaults | `/reset_config` |
+| `/help` | Display command cheat-sheet | `/help` |
+
+All changes made via Telegram are persisted to SQLite (`settings` table) and take effect immediately without restarting the service.
+
+---
+
 ## Testing
 
 Run the test suite via pytest:
