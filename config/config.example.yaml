@@ -1,0 +1,60 @@
+# Job Pulse Configuration Template
+# Copy this file to config/config.yaml and populate with your credentials.
+
+telegram:
+  bot_token: "YOUR_TELEGRAM_BOT_TOKEN"
+  chat_id: "YOUR_TELEGRAM_CHAT_ID"
+
+email:
+  enabled: true
+  imap_server: "imap.gmail.com"
+  imap_port: 993
+  username: "your-alerts-email@gmail.com"
+  password: "your-imap-app-password"
+  check_interval_seconds: 300
+  folder: "INBOX"
+
+arbeitsagentur:
+  enabled: true
+  keywords:
+    - "backend engineer"
+    - "software engineer"
+    - "systems engineer"
+    - "devops"
+    - "cloud engineer"
+    - "platform engineer"
+    - "linux"
+  locations:
+    - "Berlin"
+    - "München"
+    - "Frankfurt"
+    - "Hamburg"
+    - "Remote"
+  radius_km: 50
+  poll_interval_seconds: 3600
+
+ats:
+  enabled: true
+  personio_companies: []  # e.g. ["company1", "company2"]
+  poll_interval_seconds: 3600
+
+matcher:
+  inclusion_patterns:
+    - '(?i)\b(backend|software\s*engineer|systems\s*engineer|network|devops|cloud|infrastructure|linux|platform)\b'
+  exclusion_patterns:
+    - '(?i)\b(intern|praktikant|working\s*student|werkstudent|trainee|sales|marketing|frontend\s*only)\b'
+  locations:
+    - "Germany"
+    - "Deutschland"
+    - "Berlin"
+    - "Munich"
+    - "München"
+    - "Frankfurt"
+    - "Hamburg"
+    - "Remote"
+
+database:
+  path: "data/jobs.sqlite"
+
+career_ops:
+  pipeline_path: "career-ops/data/pipeline.md"
