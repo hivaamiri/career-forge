@@ -1,0 +1,14 @@
+[Unit]
+Description=Run Job Pulse periodic polling timer
+RefuseManualStart=no
+RefuseManualStop=no
+
+[Timer]
+# Run 2 minutes after boot, and then every 10 minutes
+OnBootSec=2min
+OnUnitActiveSec=10min
+Persistent=true
+Unit=job-pulse.service
+
+[Install]
+WantedBy=timers.target

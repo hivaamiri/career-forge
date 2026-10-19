@@ -1,0 +1,28 @@
+[Unit]
+Description=Job Pulse - Automated Background Engineering Job Discovery Service
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust WorkingDirectory and ExecStart to your deployment target
+WorkingDirectory=/opt/job-pulse
+ExecStart=/opt/job-pulse/.venv/bin/python main.py
+Restart=on-failure
+RestartSec=30s
+TimeoutStopSec=20s
+
+# Sandboxing and security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/job-pulse/data /opt/job-pulse/career-ops
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=job-pulse
+
+[Install]
+WantedBy=multi-user.target

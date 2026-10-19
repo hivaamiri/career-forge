@@ -155,6 +155,6 @@ job-pulse/
 - [x] **Task 3.3:** Integrate both pollers into periodic execution loop.
 
 ### Task Group 4: Career-Ops Handshake & Automation
-- [ ] **Task 4.1:** Implement `src/bridge_careerops.py` to parse markdown table in `career-ops/data/pipeline.md` and append verified candidates.
-- [ ] **Task 4.2:** Implement Telegram polling callback handler so pressing `[Queue Career-Ops]` runs `bridge_careerops.py` automatically.
-- [ ] **Task 4.3:** Create systemd unit files (`job-pulse.service` and `job-pulse.timer`) for unattended Linux background execution.
+- [x] **Task 4.1:** Implement `src/bridge_careerops.py` to parse markdown table in `career-ops/data/pipeline.md` and append verified candidates.
+- [x] **Task 4.2:** Implement Telegram polling callback handler so pressing `[Queue Career-Ops]` runs `bridge_careerops.py` automatically.
+- [x] **Task 4.3:** Create systemd unit files (`job-pulse.service` and `job-pulse.timer`) for unattended Linux background execution.

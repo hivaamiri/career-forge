@@ -63,6 +63,12 @@ class Orchestrator:
             notifier=self.notifier,
             matcher=self.matcher,
         )
+        from src.telegram_listener import TelegramCallbackHandler
+        self.callback_handler = TelegramCallbackHandler(
+            config=config,
+            db=self.db,
+            notifier=self.notifier,
+        )
 
         self._running = False
         self._last_email_check = 0.0
@@ -98,6 +104,12 @@ class Orchestrator:
             except Exception as e:
                 logger.error(f"Error during ATS poll: {e}", exc_info=True)
 
+        # 4. Process any pending interactive Telegram callbacks
+        try:
+            self.callback_handler.process_updates(timeout=1)
+        except Exception as e:
+            logger.warning(f"Error checking Telegram callbacks: {e}")
+
         total = sum(counts.values())
         logger.info(
             f"Sweep finished. New jobs discovered: Total={total} "
@@ -112,6 +124,12 @@ class Orchestrator:
 
         while self._running:
             now = time.time()
+
+            # Process Telegram interactive buttons (callbacks)
+            try:
+                self.callback_handler.process_updates(timeout=1)
+            except Exception as e:
+                logger.warning(f"Error handling Telegram updates: {e}")
 
             # Email stream check
             if (
@@ -148,7 +166,7 @@ class Orchestrator:
                 self._last_ats_poll = time.time()
 
             # Short sleep to prevent CPU spinning while maintaining responsiveness
-            time.sleep(5)
+            time.sleep(3)
 
         logger.info("Job Pulse daemon stopped cleanly.")
 
