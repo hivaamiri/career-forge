@@ -80,7 +80,18 @@ def extract_html_body(msg: email.message.Message) -> str:
 class EmailStreamConsumer:
     """Consumes and processes job notification emails from an IMAP mailbox."""
 
-    TARGET_SENDERS = ["stepstone", "linkedin", "xing"]
+    TARGET_SENDERS = [
+        "stepstone",
+        "linkedin",
+        "xing",
+        "test",
+        "job",
+        "stellenangebot",
+        "karriere",
+        "career",
+        "alert",
+        "bewerbung",
+    ]
 
     def __init__(
         self,

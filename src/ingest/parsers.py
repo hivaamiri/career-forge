@@ -204,6 +204,70 @@ def parse_xing_email(html_content: str) -> List[ParsedEmailJob]:
     return jobs
 
 
+def parse_generic_email(html_content: str, subject: str = "") -> List[ParsedEmailJob]:
+    """Fallback parser for forwarded or custom test emails containing job postings."""
+    soup = BeautifulSoup(html_content, "html.parser")
+    jobs: List[ParsedEmailJob] = []
+    seen_urls = set()
+
+    for a in soup.find_all("a", href=True):
+        href = a["href"].strip()
+        if not href.startswith("http") or href in seen_urls:
+            continue
+
+        title = _clean_text(a.get_text())
+        if len(title) < 4:
+            continue
+
+        if any(
+            skip in title.lower()
+            for skip in [
+                "unsubscribe",
+                "abmelden",
+                "datenschutz",
+                "impressum",
+                "view online",
+                "privacy",
+                "terms",
+                "login",
+                "manage",
+                "help",
+            ]
+        ):
+            continue
+
+        seen_urls.add(href)
+        container = a.find_parent(["td", "div", "li", "p"]) or a.parent
+        company = "Direct Application"
+        location = None
+        snippet = None
+
+        if container:
+            lines = [
+                _clean_text(line)
+                for line in container.stripped_strings
+                if _clean_text(line) and _clean_text(line) != title
+            ]
+            if len(lines) >= 1:
+                company = lines[0]
+            if len(lines) >= 2:
+                location = lines[1]
+            if len(lines) >= 3:
+                snippet = " | ".join(lines[2:4])
+
+        jobs.append(
+            ParsedEmailJob(
+                source="email",
+                title=title,
+                company=company,
+                location=location,
+                raw_url=href,
+                snippet=snippet,
+            )
+        )
+    return jobs
+
+
 def parse_email_message(
     sender: str,
     subject: str,
@@ -214,13 +278,19 @@ def parse_email_message(
     subject_lower = subject.lower()
 
     if "stepstone" in sender_lower or "stepstone" in subject_lower:
-        return parse_stepstone_email(html_content)
+        results = parse_stepstone_email(html_content)
+        if results:
+            return results
     elif "linkedin" in sender_lower or "linkedin" in subject_lower:
-        return parse_linkedin_email(html_content)
+        results = parse_linkedin_email(html_content)
+        if results:
+            return results
     elif "xing" in sender_lower or "xing" in subject_lower:
-        return parse_xing_email(html_content)
+        results = parse_xing_email(html_content)
+        if results:
+            return results
 
-    # If sender did not match known domains, try parsing each format
+    # Try specific parsers first
     results = parse_stepstone_email(html_content)
     if results:
         return results
@@ -231,4 +301,5 @@ def parse_email_message(
     if results:
         return results
 
-    return []
+    # Fallback to generic anchor extractor (for forwarded alerts or custom test emails)
+    return parse_generic_email(html_content, subject)
