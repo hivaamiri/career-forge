@@ -107,6 +107,24 @@ class TelegramCallbackHandler:
             except Exception as err:
                 logger.warning(f"Failed to answer callback query: {err}")
 
+        # When queued, trigger automated evaluation and report match score
+        if success:
+            try:
+                from src.career_ops.pipeline_manager import PipelineManager
+                mgr = PipelineManager(pipeline_path=self.pipeline_path)
+                eval_results = mgr.evaluate_all()
+                for entry, ev in eval_results:
+                    if entry.company in message or job_id in entry.url:
+                        self.notifier.send_message(
+                            f"🎯 <b>Match Score: {ev.overall_score}% ({ev.classification.split(' ')[0]})</b>\n"
+                            f"📋 <b>Role:</b> {_escape(entry.role)} @ {_escape(entry.company)}\n"
+                            f"✅ <b>Matched:</b> {_escape(', '.join(ev.matched_skills[:6])) or 'Allgemeine Passung'}\n"
+                            f"💡 <i>Type /generate to draft tailored cover letter & resume!</i>"
+                        )
+                        break
+            except Exception as ev_err:
+                logger.warning(f"Auto-evaluation error: {ev_err}")
+
     def _handle_message(self, message: Dict[str, Any]) -> bool:
         """Handle text commands for viewing and modifying scraping settings."""
         chat_id = str(message.get("chat", {}).get("id", ""))
@@ -149,6 +167,12 @@ class TelegramCallbackHandler:
             self._cmd_del_company(args)
         elif command in ["/sweep", "/run", "/scan"]:
             self._cmd_trigger_sweep()
+        elif command == "/pipeline":
+            self._cmd_show_pipeline()
+        elif command == "/evaluate":
+            self._cmd_trigger_evaluate()
+        elif command == "/generate":
+            self._cmd_trigger_generate()
         elif command == "/reset_config":
             self._cmd_reset_config()
         else:
@@ -186,7 +210,11 @@ class TelegramCallbackHandler:
 
     def _cmd_help(self) -> None:
         help_text = (
-            "🤖 <b>Job Pulse Command Center</b>\n\n"
+            "🤖 <b>Job Pulse & Career-Ops Command Center</b>\n\n"
+            "<b>🎯 Career-Ops Application Engine:</b>\n"
+            "• /pipeline — View active pipeline status and match scores\n"
+            "• /evaluate — Run match scoring against your candidate profile\n"
+            "• /generate — Generate tailored German Anschreiben & CV (HTML & MD)\n\n"
             "<b>⚙️ View & Reset Settings:</b>\n"
             "• /config — Display active keywords, locations & radius\n"
             "• /reset_config — Revert all overrides to config.yaml defaults\n\n"
@@ -199,14 +227,86 @@ class TelegramCallbackHandler:
             "• /del_location &lt;city&gt; — Remove target city\n"
             "• /set_locations &lt;loc1, loc2, ...&gt; — Overwrite location list\n\n"
             "<b>📏 Search Radius:</b>\n"
-            "• /set_radius &lt;km&gt; — Set search radius in kilometers (e.g. <code>/set_radius 75</code>)\n\n"
+            "• /set_radius &lt;km&gt; — Set search radius in km\n\n"
             "<b>🏢 Target Personio Companies:</b>\n"
-            "• /add_company &lt;slug&gt; — Add target company board (e.g. <code>/add_company celonis</code>)\n"
+            "• /add_company &lt;slug&gt; — Add target company board\n"
             "• /del_company &lt;slug&gt; — Remove target company\n\n"
             "<b>🚀 On-Demand Actions:</b>\n"
             "• /sweep — Trigger an immediate live scan across all scrapers"
         )
         self.notifier.send_message(help_text)
+
+    def _cmd_show_pipeline(self) -> None:
+        try:
+            from src.career_ops.pipeline_manager import PipelineManager
+            mgr = PipelineManager(pipeline_path=self.pipeline_path)
+            entries = mgr.load_entries()
+            if not entries:
+                self.notifier.send_message(
+                    "ℹ️ No jobs currently in pipeline. Tap <b>[📥 Queue Career-Ops]</b> on any job alert to add positions!"
+                )
+                return
+
+            lines = ["📋 <b>Career-Ops Application Pipeline:</b>\n"]
+            for idx, e in enumerate(entries, start=1):
+                lines.append(
+                    f"<b>{idx}. {_escape(e.company)}</b>\n"
+                    f"   💼 {_escape(e.role)}\n"
+                    f"   📍 {_escape(e.location)} | 🏷 <b>{_escape(e.status)}</b>\n"
+                    f"   🎯 <b>Score:</b> {_escape(e.match_score)}\n"
+                )
+            lines.append("💡 <i>Use /evaluate to update scores or /generate to build application documents.</i>")
+            self.notifier.send_message("\n".join(lines))
+        except Exception as e:
+            logger.error(f"Error displaying pipeline: {e}")
+            self.notifier.send_message(f"❌ Error loading pipeline: {_escape(str(e))}")
+
+    def _cmd_trigger_evaluate(self) -> None:
+        self.notifier.send_message("🔍 <i>Scraping job descriptions and scoring against your profile...</i>")
+        try:
+            from src.career_ops.pipeline_manager import PipelineManager
+            mgr = PipelineManager(pipeline_path=self.pipeline_path)
+            results = mgr.evaluate_all()
+            if not results:
+                self.notifier.send_message("ℹ️ No queued positions pending evaluation. Tap [📥 Queue Career-Ops] on new alerts first.")
+                return
+
+            msg = [f"🎯 <b>Evaluated {len(results)} Position(s):</b>\n"]
+            for entry, ev in results:
+                msg.append(
+                    f"• <b>{_escape(entry.company)}</b>: <b>{ev.overall_score}%</b> ({ev.classification.split(' ')[0]})\n"
+                    f"  Role: {_escape(entry.role)}\n"
+                    f"  Matched: {_escape(', '.join(ev.matched_skills[:5])) or 'Allgemeine Passung'}\n"
+                )
+            msg.append("\n💡 <i>Type /generate to produce customized cover letters & CVs.</i>")
+            self.notifier.send_message("\n".join(msg))
+        except Exception as e:
+            logger.error(f"Error evaluating pipeline: {e}")
+            self.notifier.send_message(f"❌ Error during evaluation: {_escape(str(e))}")
+
+    def _cmd_trigger_generate(self) -> None:
+        self.notifier.send_message("✍️ <i>Generating tailored German cover letters & CVs...</i>")
+        try:
+            from src.career_ops.pipeline_manager import PipelineManager
+            mgr = PipelineManager(pipeline_path=self.pipeline_path)
+            mgr.evaluate_all()
+            paths = mgr.generate_all_applications()
+            if not paths:
+                self.notifier.send_message("ℹ️ No positions ready. Tap [📥 Queue Career-Ops] on a job first!")
+                return
+
+            msg = [f"🎉 <b>Generated {len(paths)} Tailored Application Package(s):</b>\n"]
+            for p in paths:
+                msg.append(
+                    f"• <b>{_escape(p.name)}</b>\n"
+                    f"  📄 <code>anschreiben.html</code> & <code>lebenslauf.html</code>\n"
+                    f"  📁 <code>career-ops/data/applications/{_escape(p.name)}/</code>\n"
+                )
+            msg.append("💡 <i>Files are ready for print / PDF export in your career-ops directory!</i>")
+            self.notifier.send_message("\n".join(msg))
+        except Exception as e:
+            logger.error(f"Error generating applications: {e}")
+            self.notifier.send_message(f"❌ Error generating applications: {_escape(str(e))}")
 
     def _cmd_show_config(self) -> None:
         keywords = self._get_active_keywords()

@@ -64,7 +64,7 @@ class MatcherConfig(BaseModel):
     )
     exclusion_patterns: List[str] = Field(
         default_factory=lambda: [
-            r"(?i)\b(intern|praktikant|working\s*student|werkstudent|trainee|sales|marketing|vertrieb|kaufmännisch|kellner|fahrer)\b"
+            r"(?i)\b(intern|praktikant|working\s*student|werkstudent|trainee|sales|marketing|vertrieb|kaufmännisch|kellner|fahrer|call\s*center|helfer|produktionshelfer|hilfskraft|lagerhelfer|verpacker|kommissionierer|reinigungskraft|montierer|lagerarbeiter|schichthelfer|aushilfe|staplerfahrer|maschinenbediener)\b"
         ]
     )
     locations: List[str] = Field(

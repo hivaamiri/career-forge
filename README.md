@@ -76,12 +76,15 @@ python scripts/test_telegram.py
 
 ---
 
-## Telegram Bot Command Center
+### Telegram Bot Command Center
 
-You can configure scraping keywords, locations, search radius, and target companies dynamically straight from your Telegram chat:
+You can configure scraping keywords, locations, search radius, and trigger Career-Ops evaluations dynamically straight from your Telegram chat:
 
 | Command | Description | Example |
 | :--- | :--- | :--- |
+| `/pipeline` | View active Career-Ops pipeline and match scores | `/pipeline` |
+| `/evaluate` | Scrape queued JDs and calculate match score against profile | `/evaluate` |
+| `/generate` | Generate tailored German Anschreiben & CV (HTML & MD) | `/generate` |
 | `/config` | View active keywords, locations, radius, and ATS targets | `/config` |
 | `/add_keyword <text>` | Add one or more search keywords | `/add_keyword biochemie, cta` |
 | `/del_keyword <text>` | Remove a keyword | `/del_keyword qualitätskontrolle` |
@@ -90,13 +93,41 @@ You can configure scraping keywords, locations, search radius, and target compan
 | `/del_location <city>` | Remove a location | `/del_location Hamburg` |
 | `/set_locations <list>` | Overwrite all locations | `/set_locations Berlin, München, Remote` |
 | `/set_radius <km>` | Set Bundesagentur search radius | `/set_radius 75` |
-| `/add_company <slug>` | Add target Personio company feed | `/add_company celonis` |
+| `/add_company <slug>` | Add target Personio company feed | `/add_company biontech` |
 | `/del_company <slug>` | Remove Personio company | `/del_company acme` |
 | `/sweep` | Trigger an immediate live scan across all scrapers | `/sweep` |
 | `/reset_config` | Revert all overrides back to `config.yaml` defaults | `/reset_config` |
 | `/help` | Display command cheat-sheet | `/help` |
 
 All changes made via Telegram are persisted to SQLite (`settings` table) and take effect immediately without restarting the service.
+
+---
+
+## Career-Ops Engine (Scraping, Scoring & Application Generator)
+
+Career-Ops automates the second half of the job hunt once a position is queued:
+1. **Candidate Profile:** Configured in `career-ops/config/profile.yaml` (personal details, analytical methods, regulatory standards, work history, target roles).
+2. **Job Description Scraper (`src/career_ops/jd_scraper.py`):** Automatically extracts full requirements, tasks, and company details from job URLs.
+3. **Match Scorer (`src/career_ops/matcher_scorer.py`):** Scores job requirements against your profile (0–100%) across analytical instruments (HPLC, GC-MS, NMR), regulations (GMP, GLP, ISO), and qualifications.
+4. **Application Generator (`src/career_ops/generator.py`):** Generates:
+   - **DIN 5008 German Cover Letter (*Anschreiben*):** Tailored specifically to the job, highlighting matched methods and company relevance.
+   - **German Resume (*Lebenslauf*):** Structured and prioritized for the specific position.
+   - Exported as both Markdown and print-ready A4 HTML (`anschreiben.html`, `lebenslauf.html`) in `career-ops/data/applications/{company}_{role}/`.
+
+### Career-Ops CLI
+```bash
+# View pipeline status
+python career-ops/run_careerops.py status
+
+# Scrape and score all queued positions
+python career-ops/run_careerops.py evaluate
+
+# Generate tailored cover letters & resumes
+python career-ops/run_careerops.py generate
+
+# End-to-end (evaluate + generate)
+python career-ops/run_careerops.py all
+```
 
 ---
 

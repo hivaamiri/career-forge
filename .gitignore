@@ -16,11 +16,16 @@ config/config.yaml
 *.key
 
 # Data & SQLite
-data/
+/data/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
 *.db
+
+# Career-Ops Local Data & Private Profile
+career-ops/config/profile.yaml
+career-ops/data/jobs/
+career-ops/data/applications/
 
 # Testing & Linting
 .pytest_cache/

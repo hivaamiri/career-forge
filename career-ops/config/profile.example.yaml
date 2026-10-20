@@ -1,0 +1,57 @@
+# Career-Ops Candidate Profile Configuration Template
+# Copy this file to career-ops/config/profile.yaml and customize with your details.
+
+personal:
+  name: "Your Name"
+  title: "Your Professional Title"
+  email: "your.email@example.com"
+  phone: "+49 170 00000000"
+  location: "Berlin, Deutschland"
+  address: "Musterstraße 1, 10115 Berlin"
+  linkedin: "https://linkedin.com/in/yourprofile"
+
+summary: >
+  Professional summary describing your background, strengths, and goals.
+
+skills:
+  analytical_methods:
+    - "HPLC"
+    - "GC-MS"
+    - "UV-Vis"
+    - "Titration"
+  quality_and_regulations:
+    - "GMP"
+    - "GLP"
+    - "ISO 9001"
+  laboratory_techniques:
+    - "Probenvorbereitung"
+    - "Synthese"
+    - "LIMS"
+  software:
+    - "LIMS"
+    - "ChemStation"
+    - "MS Office"
+  languages:
+    - name: "Deutsch"
+      level: "C1"
+    - name: "Englisch"
+      level: "B2"
+
+experience:
+  - title: "Wissenschaftlicher Mitarbeiter"
+    company: "Forschungszentrum"
+    location: "Berlin"
+    period: "2023 - Heute"
+    tasks:
+      - "Analysemethoden und Laboruntersuchungen."
+
+education:
+  - degree: "M.Sc. Chemie"
+    institution: "Universität Berlin"
+    period: "2021 - 2023"
+
+preferences:
+  target_roles:
+    - "Chemiker"
+  salary_expectation: "nach Vereinbarung"
+  availability: "nach Absprache"

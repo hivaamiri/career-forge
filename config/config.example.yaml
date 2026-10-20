@@ -47,7 +47,7 @@ matcher:
   inclusion_patterns:
     - '(?i)\b(chemie|chemiker|chemikerin|chemielaborant|chemielaborantin|laborant|laborantin|labor|laborpraxis|laborleitung|laborleiter|analytik|analytiker|analytische\s*chemie|biochemie|biotechnologie|prozessentwicklung|formulation|aufreinigung|qualitätskontrolle|materialprüfung|analytiklabor|cta|bta|synthese|galenik|qc\s*analyst|chemisch|chemisch-technisch|pharmazeutisch)\b'
   exclusion_patterns:
-    - '(?i)\b(intern|praktikant|working\s*student|werkstudent|trainee|sales|marketing|vertrieb|kaufmännisch|kellner|fahrer)\b'
+    - '(?i)\b(intern|praktikant|working\s*student|werkstudent|trainee|sales|marketing|vertrieb|kaufmännisch|kellner|fahrer|call\s*center|helfer|produktionshelfer|hilfskraft|lagerhelfer|verpacker|kommissionierer|reinigungskraft|montierer|lagerarbeiter|schichthelfer|aushilfe|staplerfahrer|maschinenbediener)\b'
   locations:
     - "Germany"
     - "Deutschland"
