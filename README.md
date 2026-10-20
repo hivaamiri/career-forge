@@ -82,6 +82,17 @@ You can configure scraping keywords, locations, search radius, and trigger Caree
 
 | Command | Description | Example |
 | :--- | :--- | :--- |
+| **Send Document** | Drop your CV (`.pdf`, `.txt`, `.md`) directly in chat to ingest | *(Attach file in Telegram)* |
+| `/profile` | View active candidate profile and skills | `/profile` |
+| `/set_name <name>` | Set candidate name | `/set_name Hiva Amiri` |
+| `/set_title <title>` | Set candidate title | `/set_title Chemiker / M.Sc.` |
+| `/set_contact <info>` | Update email, phone, location | `/set_contact hiva@test.de \| +49 170 123456 \| Berlin` |
+| `/add_skill <skills>` | Add analytical/lab skills | `/add_skill HPLC, GC-MS, Titration, GMP` |
+| `/set_skills <skills>` | Overwrite analytical skills | `/set_skills HPLC, GC, UV-Vis` |
+| `/set_salary <text>` | Set salary expectation | `/set_salary ca. 65.000 € p.a.` |
+| `/set_availability <text>` | Set start date / notice period | `/set_availability ab sofort` |
+| `/feed_cv <text>` | Paste raw CV text into chat | `/feed_cv Profil: M.Sc. Chemiker...` |
+| `/feed_template <text>` | Save custom cover letter template | `/feed_template Sehr geehrte...` |
 | `/pipeline` | View active Career-Ops pipeline and match scores | `/pipeline` |
 | `/evaluate` | Scrape queued JDs and calculate match score against profile | `/evaluate` |
 | `/generate` | Generate tailored German Anschreiben & CV (HTML & MD) | `/generate` |

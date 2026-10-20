@@ -158,3 +158,19 @@ class TelegramNotifier:
                     f"Telegram credentials invalid: {data.get('description')}"
                 )
             return data.get("result", {})
+
+    def get_file(self, file_id: str) -> Dict[str, Any]:
+        """Fetch file metadata from Telegram."""
+        url = f"{self.base_url}/getFile"
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.get(url, params={"file_id": file_id})
+            response.raise_for_status()
+            return response.json()
+
+    def download_file(self, file_path: str) -> bytes:
+        """Download raw file content from Telegram."""
+        url = f"https://api.telegram.org/file/bot{self.bot_token}/{file_path}"
+        with httpx.Client(timeout=30.0) as client:
+            response = client.get(url)
+            response.raise_for_status()
+            return response.content

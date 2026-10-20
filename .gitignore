@@ -24,6 +24,9 @@ config/config.yaml
 
 # Career-Ops Local Data & Private Profile
 career-ops/config/profile.yaml
+career-ops/config/uploaded_cv*
+career-ops/config/*.txt
+career-ops/config/*.pdf
 career-ops/data/jobs/
 career-ops/data/applications/
 

@@ -63,9 +63,16 @@ class TelegramCallbackHandler:
                 processed += 1
                 continue
 
-            # 2. Handle Text Commands
+            # 2. Handle Document / CV Uploads
             message = update.get("message")
             if message:
+                document = message.get("document")
+                if document:
+                    self._handle_document(message, document)
+                    processed += 1
+                    continue
+
+                # 3. Handle Text Commands
                 if self._handle_message(message):
                     processed += 1
 
@@ -125,6 +132,64 @@ class TelegramCallbackHandler:
             except Exception as ev_err:
                 logger.warning(f"Auto-evaluation error: {ev_err}")
 
+    def _handle_document(self, message: Dict[str, Any], document: Dict[str, Any]) -> None:
+        """Handle incoming CV document files (PDF, Markdown, Text)."""
+        chat_id = str(message.get("chat", {}).get("id", ""))
+        if chat_id != str(self.config.telegram.chat_id):
+            return
+
+        file_id = document.get("file_id")
+        file_name = document.get("file_name", "uploaded_cv.pdf")
+        if not file_id:
+            return
+
+        self.notifier.send_message(f"📥 <i>Downloading document '{_escape(file_name)}'...</i>")
+
+        try:
+            from pathlib import Path
+            from src.career_ops.profile_manager import ProfileManager
+
+            file_meta = self.notifier.get_file(file_id)
+            file_path = file_meta.get("result", {}).get("file_path")
+            if not file_path:
+                self.notifier.send_message("❌ Failed to resolve document download URL from Telegram.")
+                return
+
+            raw_bytes = self.notifier.download_file(file_path)
+            ext = Path(file_name).suffix or ".pdf"
+            dest_dir = Path("career-ops/config")
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            local_path = dest_dir / f"uploaded_cv{ext}"
+            local_path.write_bytes(raw_bytes)
+
+            pm = ProfileManager()
+            extracted_text = pm.extract_text_from_file(local_path)
+            changes = pm.ingest_cv_text(extracted_text, source_filename=file_name)
+
+            skills_count = len(changes.get("analytical_methods", [])) + len(changes.get("quality_and_regulations", []))
+            reply = [
+                "✅ <b>CV Successfully Ingested!</b>\n",
+                f"📄 <b>File:</b> {_escape(file_name)} ({len(raw_bytes) // 1024} KB)",
+            ]
+            if "name" in changes:
+                reply.append(f"👤 <b>Extracted Name:</b> {_escape(changes['name'])}")
+            if "email" in changes:
+                reply.append(f"📧 <b>Extracted E-Mail:</b> {_escape(changes['email'])}")
+            if "phone" in changes:
+                reply.append(f"📱 <b>Extracted Phone:</b> {_escape(changes['phone'])}")
+            if "location" in changes:
+                reply.append(f"📍 <b>Extracted Location:</b> {_escape(changes['location'])}")
+            if skills_count > 0:
+                skills_preview = ", ".join((changes.get("analytical_methods", []) + changes.get("quality_and_regulations", []))[:8])
+                reply.append(f"🔬 <b>Identified Skills ({skills_count}):</b> {_escape(skills_preview)}")
+
+            reply.append("\n💡 <i>Type /profile to view your profile, or /evaluate to re-score queued jobs!</i>")
+            self.notifier.send_message("\n".join(reply))
+
+        except Exception as e:
+            logger.error(f"Error handling document: {e}", exc_info=True)
+            self.notifier.send_message(f"❌ Error ingesting document: {_escape(str(e))}")
+
     def _handle_message(self, message: Dict[str, Any]) -> bool:
         """Handle text commands for viewing and modifying scraping settings."""
         chat_id = str(message.get("chat", {}).get("id", ""))
@@ -173,6 +238,26 @@ class TelegramCallbackHandler:
             self._cmd_trigger_evaluate()
         elif command == "/generate":
             self._cmd_trigger_generate()
+        elif command == "/profile":
+            self._cmd_show_profile()
+        elif command == "/set_name":
+            self._cmd_set_name(args)
+        elif command == "/set_title":
+            self._cmd_set_title(args)
+        elif command == "/set_contact":
+            self._cmd_set_contact(args)
+        elif command == "/add_skill":
+            self._cmd_add_skill(args)
+        elif command == "/set_skills":
+            self._cmd_set_skills(args)
+        elif command == "/set_salary":
+            self._cmd_set_salary(args)
+        elif command == "/set_availability":
+            self._cmd_set_availability(args)
+        elif command == "/feed_cv":
+            self._cmd_feed_cv(args)
+        elif command == "/feed_template":
+            self._cmd_feed_template(args)
         elif command == "/reset_config":
             self._cmd_reset_config()
         else:
@@ -215,6 +300,18 @@ class TelegramCallbackHandler:
             "• /pipeline — View active pipeline status and match scores\n"
             "• /evaluate — Run match scoring against your candidate profile\n"
             "• /generate — Generate tailored German Anschreiben & CV (HTML & MD)\n\n"
+            "<b>👤 Candidate Profile & CV Configuration:</b>\n"
+            "• <i>Upload Document:</i> Send your CV (.pdf, .txt, .md) directly in chat!\n"
+            "• /profile — View current candidate profile & skills\n"
+            "• /set_name &lt;name&gt; — Set candidate name\n"
+            "• /set_title &lt;title&gt; — Set title (e.g. <code>/set_title Chemiker / M.Sc. Analytik</code>)\n"
+            "• /set_contact &lt;email | phone | city&gt; — Update contact details\n"
+            "• /add_skill &lt;skill1, skill2&gt; — Add skills (e.g. HPLC, GC-MS, GMP)\n"
+            "• /set_skills &lt;list&gt; — Overwrite full skills list\n"
+            "• /set_salary &lt;text&gt; — Update salary expectation\n"
+            "• /set_availability &lt;text&gt; — Update notice period / start date\n"
+            "• /feed_cv &lt;text&gt; — Paste raw CV text into chat\n"
+            "• /feed_template &lt;text&gt; — Save custom cover letter template\n\n"
             "<b>⚙️ View & Reset Settings:</b>\n"
             "• /config — Display active keywords, locations & radius\n"
             "• /reset_config — Revert all overrides to config.yaml defaults\n\n"
@@ -512,3 +609,105 @@ class TelegramCallbackHandler:
         self.db.delete_setting("personio_companies")
         self._notify_change()
         self.notifier.send_message("🔄 All custom settings have been reset back to <code>config.yaml</code> defaults.")
+
+    def _cmd_show_profile(self) -> None:
+        try:
+            from src.career_ops.profile_manager import ProfileManager
+            pm = ProfileManager()
+            self.notifier.send_message(pm.format_summary())
+        except Exception as e:
+            self.notifier.send_message(f"❌ Error loading profile: {_escape(str(e))}")
+
+    def _cmd_set_name(self, args: str) -> None:
+        if not args:
+            self.notifier.send_message("⚠️ Usage: <code>/set_name &lt;Full Name&gt;</code>")
+            return
+        from src.career_ops.profile_manager import ProfileManager
+        pm = ProfileManager()
+        pm.update_field("personal", "name", args.strip())
+        self.notifier.send_message(f"✅ Name updated to: <b>{_escape(args.strip())}</b>")
+
+    def _cmd_set_title(self, args: str) -> None:
+        if not args:
+            self.notifier.send_message("⚠️ Usage: <code>/set_title &lt;Title / Degree&gt;</code>\nExample: <code>/set_title Chemiker / M.Sc. Analytik</code>")
+            return
+        from src.career_ops.profile_manager import ProfileManager
+        pm = ProfileManager()
+        pm.update_field("personal", "title", args.strip())
+        self.notifier.send_message(f"✅ Title updated to: <b>{_escape(args.strip())}</b>")
+
+    def _cmd_set_contact(self, args: str) -> None:
+        parts = [p.strip() for p in args.split("|") if p.strip()]
+        if not parts:
+            self.notifier.send_message("⚠️ Usage: <code>/set_contact email@domain.com | +49 170 123456 | Berlin, Deutschland</code>")
+            return
+        from src.career_ops.profile_manager import ProfileManager
+        pm = ProfileManager()
+        if len(parts) >= 1 and "@" in parts[0]:
+            pm.update_field("personal", "email", parts[0])
+        if len(parts) >= 2:
+            pm.update_field("personal", "phone", parts[1])
+        if len(parts) >= 3:
+            pm.update_field("personal", "location", parts[2])
+            pm.update_field("personal", "address", parts[2])
+        self.notifier.send_message("✅ Contact details updated! Type /profile to review.")
+
+    def _cmd_add_skill(self, args: str) -> None:
+        if not args:
+            self.notifier.send_message("⚠️ Usage: <code>/add_skill HPLC, GC-MS, Titration, GMP</code>")
+            return
+        skills = [s.strip() for s in args.split(",") if s.strip()]
+        from src.career_ops.profile_manager import ProfileManager
+        pm = ProfileManager()
+        added = pm.add_skills(skills)
+        if added:
+            self.notifier.send_message(f"✅ Added {len(added)} skill(s): {_escape(', '.join(added))}")
+        else:
+            self.notifier.send_message("ℹ️ Specified skill(s) already exist in profile.")
+
+    def _cmd_set_skills(self, args: str) -> None:
+        if not args:
+            self.notifier.send_message("⚠️ Usage: <code>/set_skills HPLC, GC, UV-Vis, Titration</code>")
+            return
+        skills = [s.strip() for s in args.split(",") if s.strip()]
+        from src.career_ops.profile_manager import ProfileManager
+        pm = ProfileManager()
+        pm.set_skills(skills)
+        self.notifier.send_message(f"✅ Analytical skills set to ({len(skills)}): {_escape(', '.join(skills))}")
+
+    def _cmd_set_salary(self, args: str) -> None:
+        if not args:
+            self.notifier.send_message("⚠️ Usage: <code>/set_salary ca. 65.000 € brutto p.a.</code>")
+            return
+        from src.career_ops.profile_manager import ProfileManager
+        pm = ProfileManager()
+        pm.update_field("preferences", "salary_expectation", args.strip())
+        self.notifier.send_message(f"✅ Salary expectation updated to: <b>{_escape(args.strip())}</b>")
+
+    def _cmd_set_availability(self, args: str) -> None:
+        if not args:
+            self.notifier.send_message("⚠️ Usage: <code>/set_availability ab sofort / 1 Monat Kündigungsfrist</code>")
+            return
+        from src.career_ops.profile_manager import ProfileManager
+        pm = ProfileManager()
+        pm.update_field("preferences", "availability", args.strip())
+        self.notifier.send_message(f"✅ Availability updated to: <b>{_escape(args.strip())}</b>")
+
+    def _cmd_feed_cv(self, args: str) -> None:
+        if not args or len(args) < 15:
+            self.notifier.send_message("⚠️ Usage: <code>/feed_cv &lt;paste your CV text here&gt;</code>")
+            return
+        from src.career_ops.profile_manager import ProfileManager
+        pm = ProfileManager()
+        changes = pm.ingest_cv_text(args, source_filename="telegram_pasted_cv.txt")
+        details = ", ".join(changes.keys()) if changes else "Text gespeichert"
+        self.notifier.send_message(f"✅ <b>CV Text Ingested!</b>\nExtracted: {_escape(details)}\nType /profile to review.")
+
+    def _cmd_feed_template(self, args: str) -> None:
+        if not args or len(args) < 25:
+            self.notifier.send_message("⚠️ Usage: <code>/feed_template &lt;paste custom German cover letter text with {company}, {title}, {matched_methods}&gt;</code>")
+            return
+        from src.career_ops.profile_manager import ProfileManager
+        pm = ProfileManager()
+        pm.save_template(args)
+        self.notifier.send_message("✅ <b>Custom Cover Letter Template Saved!</b> Applications generated via /generate will follow this style.")

@@ -90,6 +90,32 @@ class ApplicationGenerator:
         today = datetime.now().strftime("%d.%m.%Y")
         city = p.get("location", "Berlin").split(",")[0].strip()
 
+        # Check for custom cover letter template
+        custom_tpl_path = Path("career-ops/config/anschreiben_template.md")
+        if custom_tpl_path.exists():
+            try:
+                tpl = custom_tpl_path.read_text(encoding="utf-8")
+                replacements = {
+                    "{name}": p.get("name", "Hiva Amiri"),
+                    "{title}": job.title,
+                    "{company}": job.company,
+                    "{location}": job.location or "Deutschland",
+                    "{email}": p.get("email", ""),
+                    "{phone}": p.get("phone", ""),
+                    "{address}": p.get("address", ""),
+                    "{date}": today,
+                    "{matched_methods}": matched_methods,
+                    "{salary}": pref.get("salary_expectation", "nach Vereinbarung"),
+                    "{availability}": pref.get("availability", "ab sofort"),
+                    "{url}": job.canonical_url,
+                    "{ref_id}": job.id[:10],
+                }
+                for k, v in replacements.items():
+                    tpl = tpl.replace(k, str(v))
+                return tpl
+            except Exception as e:
+                logger.warning(f"Failed to apply custom template: {e}")
+
         return f"""# Anschreiben: {job.title} @ {job.company}
 
 **Absender:**  
