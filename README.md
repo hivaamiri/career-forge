@@ -76,12 +76,14 @@ python scripts/test_telegram.py
 
 ---
 
-### Telegram Bot Command Center
+### Telegram Bot Command Center & UI Menu
 
-You can configure scraping keywords, locations, search radius, and trigger Career-Ops evaluations dynamically straight from your Telegram chat:
+You can control the entire application via a mobile-friendly persistent bottom drawer (`[📋 Pipeline]`, `[🎯 Evaluate]`, `[✍️ Generate]`, `[👤 Profile]`, `[⚙️ Settings]`, `[🚀 Sweep]`, `[🎛 Control Dashboard]`), an interactive inline dashboard card (`/menu`), or slash commands:
 
 | Command | Description | Example |
 | :--- | :--- | :--- |
+| **UI Menu Drawer** | Tap the 8 persistent buttons at the bottom of Telegram | *(One-tap action buttons)* |
+| `/menu` | Open interactive in-place control dashboard card | `/menu` |
 | **Send Document** | Drop your CV (`.pdf`, `.txt`, `.md`) directly in chat to ingest | *(Attach file in Telegram)* |
 | `/profile` | View active candidate profile and skills | `/profile` |
 | `/set_name <name>` | Set candidate name | `/set_name Hiva Amiri` |
