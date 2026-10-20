@@ -9,7 +9,15 @@ from typing import Any, Callable, Dict, List, Optional
 from src.bridge_careerops import queue_job_to_careerops
 from src.config import AppConfig
 from src.db import Database
-from src.notifier import TelegramNotifier
+from src.notifier import (
+    TelegramNotifier,
+    build_back_inline_keyboard,
+    build_config_inline_keyboard,
+    build_dashboard_inline_keyboard,
+    build_main_reply_keyboard,
+    build_pipeline_inline_keyboard,
+    build_profile_inline_keyboard,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +46,16 @@ class TelegramCallbackHandler:
         self.on_config_change = on_config_change
         self.on_sweep_request = on_sweep_request
         self._last_update_id: Optional[int] = None
+
+        self.setup_bot()
+
+    def setup_bot(self) -> None:
+        """Register Telegram commands with Bot API."""
+        try:
+            self.notifier.set_my_commands()
+        except Exception as err:
+            logger.debug(f"Could not register Telegram commands (normal in offline/mock): {err}")
+
 
     def process_updates(self, timeout: int = 5) -> int:
         """Fetch and process pending updates (callback queries & text commands)."""
@@ -79,9 +97,15 @@ class TelegramCallbackHandler:
         return processed
 
     def _handle_callback(self, callback: Dict[str, Any]) -> None:
-        """Handle inline button clicks like [Queue Career-Ops]."""
+        """Handle inline button clicks like [Queue Career-Ops] and UI menu navigation."""
         callback_id = callback.get("id")
         callback_data = callback.get("data", "")
+        message = callback.get("message", {})
+        message_id = message.get("message_id")
+
+        if callback_data.startswith("m:"):
+            self._handle_menu_callback(callback_id, callback_data, message_id)
+            return
 
         job_id = None
         if callback_data.startswith("q:"):
@@ -93,7 +117,7 @@ class TelegramCallbackHandler:
             return
 
         logger.info(f"Received Queue Career-Ops callback for job_id={job_id}")
-        success, message = queue_job_to_careerops(
+        success, message_text = queue_job_to_careerops(
             job_id=job_id,
             db=self.db,
             pipeline_path=self.pipeline_path,
@@ -102,7 +126,7 @@ class TelegramCallbackHandler:
         notification_text = (
             "✅ Queued into Career-Ops pipeline!"
             if success
-            else f"ℹ️ {message}"
+            else f"ℹ️ {message_text}"
         )
 
         if callback_id:
@@ -121,7 +145,7 @@ class TelegramCallbackHandler:
                 mgr = PipelineManager(pipeline_path=self.pipeline_path)
                 eval_results = mgr.evaluate_all()
                 for entry, ev in eval_results:
-                    if entry.company in message or job_id in entry.url:
+                    if entry.company in message_text or job_id in entry.url:
                         self.notifier.send_message(
                             f"🎯 <b>Match Score: {ev.overall_score}% ({ev.classification.split(' ')[0]})</b>\n"
                             f"📋 <b>Role:</b> {_escape(entry.role)} @ {_escape(entry.company)}\n"
@@ -191,7 +215,7 @@ class TelegramCallbackHandler:
             self.notifier.send_message(f"❌ Error ingesting document: {_escape(str(e))}")
 
     def _handle_message(self, message: Dict[str, Any]) -> bool:
-        """Handle text commands for viewing and modifying scraping settings."""
+        """Handle text commands and persistent reply keyboard button clicks."""
         chat_id = str(message.get("chat", {}).get("id", ""))
         # Verify sender matches authorized chat
         if chat_id != str(self.config.telegram.chat_id):
@@ -199,6 +223,38 @@ class TelegramCallbackHandler:
             return False
 
         text = (message.get("text") or "").strip()
+        if not text:
+            return False
+
+        clean_text = text.strip()
+        lower_text = clean_text.lower()
+
+        # 1. Handle persistent reply keyboard button taps directly
+        if lower_text in ["📋 pipeline", "pipeline"]:
+            self._cmd_show_pipeline()
+            return True
+        elif lower_text in ["🎯 evaluate", "evaluate"]:
+            self._cmd_trigger_evaluate()
+            return True
+        elif lower_text in ["✍️ generate", "generate"]:
+            self._cmd_trigger_generate()
+            return True
+        elif lower_text in ["👤 profile", "profile"]:
+            self._cmd_show_profile()
+            return True
+        elif lower_text in ["⚙️ settings", "settings", "config"]:
+            self._cmd_show_config()
+            return True
+        elif lower_text in ["🚀 sweep", "sweep"]:
+            self._cmd_trigger_sweep()
+            return True
+        elif lower_text in ["🎛 control dashboard", "control dashboard", "🎛 menu", "menu"]:
+            self._cmd_menu()
+            return True
+        elif lower_text in ["❓ help", "help"]:
+            self._cmd_help()
+            return True
+
         if not text.startswith("/"):
             return False
 
@@ -208,7 +264,11 @@ class TelegramCallbackHandler:
 
         logger.info(f"Received Telegram command: {command} with args: '{args}'")
 
-        if command in ["/start", "/help"]:
+        if command == "/start":
+            self._cmd_start()
+        elif command in ["/menu", "/dashboard"]:
+            self._cmd_menu()
+        elif command == "/help":
             self._cmd_help()
         elif command in ["/config", "/settings"]:
             self._cmd_show_config()
@@ -262,7 +322,8 @@ class TelegramCallbackHandler:
             self._cmd_reset_config()
         else:
             self.notifier.send_message(
-                f"❓ Unknown command: <code>{_escape(command)}</code>\n\nType /help to see all available commands."
+                f"❓ Unknown command: <code>{_escape(command)}</code>\n\nType /help or use the buttons below to interact.",
+                reply_markup=build_main_reply_keyboard(),
             )
         return True
 
@@ -293,9 +354,328 @@ class TelegramCallbackHandler:
             except Exception as e:
                 logger.error(f"Error applying dynamic configuration: {e}")
 
+    def _cmd_start(self) -> None:
+        """Handle /start command by sending bottom keyboard drawer and dashboard card."""
+        welcome = (
+            "👋 <b>Welcome to Job Pulse & Career-Ops!</b>\n\n"
+            "Your automated job discovery and application engine is online.\n"
+            "Use the quick-action buttons below or explore the dashboard."
+        )
+        self.notifier.send_message(welcome, reply_markup=build_main_reply_keyboard())
+        self._cmd_menu()
+
+    def _cmd_menu(self) -> None:
+        """Display the interactive control dashboard card."""
+        text = self._build_dashboard_content()
+        self.notifier.send_message(
+            text=text,
+            reply_markup=build_dashboard_inline_keyboard(),
+        )
+
+    def _build_dashboard_content(self) -> str:
+        """Generate summary text for the main control dashboard card."""
+        pipe_summary = "0 positions"
+        try:
+            from src.career_ops.pipeline_manager import PipelineManager
+            mgr = PipelineManager(pipeline_path=self.pipeline_path)
+            entries = mgr.load_entries()
+            evaluated_count = sum(
+                1 for e in entries
+                if e.match_score and e.match_score not in ["Pending", "Scored", "N/A"]
+            )
+            pipe_summary = f"{len(entries)} queued ({evaluated_count} scored)"
+        except Exception:
+            pass
+
+        cand_summary = "Profile loaded"
+        try:
+            from src.career_ops.profile_manager import ProfileManager
+            pm = ProfileManager()
+            prof = pm.load_profile()
+            name = prof.get("personal", {}).get("name") or "Candidate"
+            title = prof.get("personal", {}).get("title") or "Professional"
+            cand_summary = f"{name} ({title})"
+        except Exception:
+            pass
+
+        keywords = self._get_active_keywords()
+        locations = self._get_active_locations()
+        radius = self._get_active_radius()
+        companies = self._get_active_companies()
+
+        kw_sample = ", ".join(keywords[:3]) if keywords else "None"
+        if len(keywords) > 3:
+            kw_sample += f" (+{len(keywords)-3} more)"
+        loc_sample = ", ".join(locations[:2]) if locations else "None"
+
+        return (
+            "🎛 <b>Job Pulse & Career-Ops Control Dashboard</b>\n\n"
+            f"📊 <b>Pipeline:</b> {pipe_summary}\n"
+            f"👤 <b>Candidate:</b> {_escape(cand_summary)}\n"
+            f"🔍 <b>Keywords ({len(keywords)}):</b> {_escape(kw_sample)}\n"
+            f"📍 <b>Locations ({len(locations)}):</b> {_escape(loc_sample)} ({radius} km)\n"
+            f"🏢 <b>ATS Tracking:</b> {len(companies)} company boards\n\n"
+            "<i>Select an action below to navigate or interact:</i>"
+        )
+
+    def _build_pipeline_content(self) -> str:
+        """Generate text summary of queued positions."""
+        try:
+            from src.career_ops.pipeline_manager import PipelineManager
+            mgr = PipelineManager(pipeline_path=self.pipeline_path)
+            entries = mgr.load_entries()
+            if not entries:
+                return (
+                    "📋 <b>Career-Ops Application Pipeline</b>\n\n"
+                    "ℹ️ No jobs currently in pipeline.\n\n"
+                    "Tap <b>[📥 Queue Career-Ops]</b> on any job alert to add positions!"
+                )
+
+            lines = ["📋 <b>Career-Ops Application Pipeline:</b>\n"]
+            for idx, e in enumerate(entries[:10], start=1):
+                score_str = f"<b>{_escape(e.match_score)}</b>" if e.match_score else "Pending"
+                lines.append(
+                    f"<b>{idx}. {_escape(e.company)}</b>\n"
+                    f"   💼 {_escape(e.role)}\n"
+                    f"   📍 {_escape(e.location)} | 🏷 <b>{_escape(e.status)}</b>\n"
+                    f"   🎯 <b>Score:</b> {score_str}\n"
+                )
+            if len(entries) > 10:
+                lines.append(f"<i>...and {len(entries) - 10} more positions</i>\n")
+            lines.append("💡 <i>Use /evaluate to update scores or /generate to build application documents.</i>")
+            return "\n".join(lines)
+        except Exception as e:
+            logger.error(f"Error loading pipeline: {e}")
+            return f"❌ Error loading pipeline: {_escape(str(e))}"
+
+    def _build_config_content(self) -> str:
+        """Generate formatted view of active configuration."""
+        keywords = self._get_active_keywords()
+        locations = self._get_active_locations()
+        radius = self._get_active_radius()
+        companies = self._get_active_companies()
+
+        kw_bullets = "\n".join([f"  • {_escape(k)}" for k in keywords]) if keywords else "  <i>(none)</i>"
+        loc_bullets = "\n".join([f"  • {_escape(l)}" for l in locations]) if locations else "  <i>(none)</i>"
+        comp_bullets = "\n".join([f"  • {_escape(c)}" for c in companies]) if companies else "  <i>(none)</i>"
+
+        return (
+            "⚙️ <b>Active Scraping Configuration</b>\n\n"
+            f"🔍 <b>Search Keywords ({len(keywords)}):</b>\n{kw_bullets}\n\n"
+            f"📍 <b>Locations ({len(locations)}):</b>\n{loc_bullets}\n\n"
+            f"📏 <b>Radius:</b> {radius} km\n\n"
+            f"🏢 <b>Target Personio ATS ({len(companies)}):</b>\n{comp_bullets}\n\n"
+            "💡 <i>Tip: Use /add_keyword, /add_location, /set_radius or /help to modify.</i>"
+        )
+
+    def _run_evaluation_content(self) -> str:
+        """Execute evaluation and return formatted text."""
+        try:
+            from src.career_ops.pipeline_manager import PipelineManager
+            mgr = PipelineManager(pipeline_path=self.pipeline_path)
+            results = mgr.evaluate_all()
+            if not results:
+                return (
+                    "ℹ️ <b>Evaluation: No Positions Pending</b>\n\n"
+                    "Tap <b>[📥 Queue Career-Ops]</b> on new alerts first to add positions!"
+                )
+
+            msg = [f"🎯 <b>Evaluated {len(results)} Position(s):</b>\n"]
+            for entry, ev in results[:8]:
+                msg.append(
+                    f"• <b>{_escape(entry.company)}</b>: <b>{ev.overall_score}%</b> ({ev.classification.split(' ')[0]})\n"
+                    f"  Role: {_escape(entry.role)}\n"
+                    f"  Matched: {_escape(', '.join(ev.matched_skills[:5])) or 'Allgemeine Passung'}\n"
+                )
+            if len(results) > 8:
+                msg.append(f"<i>...and {len(results)-8} more positions</i>\n")
+            msg.append("💡 <i>Tap [✍️ Generate Docs] to draft tailored cover letters & CVs.</i>")
+            return "\n".join(msg)
+        except Exception as e:
+            return f"❌ Evaluation error: {_escape(str(e))}"
+
+    def _run_generation_content(self) -> str:
+        """Execute document generation and return formatted text."""
+        try:
+            from src.career_ops.pipeline_manager import PipelineManager
+            mgr = PipelineManager(pipeline_path=self.pipeline_path)
+            mgr.evaluate_all()
+            paths = mgr.generate_all_applications()
+            if not paths:
+                return (
+                    "ℹ️ <b>Application Generation</b>\n\n"
+                    "No positions ready. Tap [📥 Queue Career-Ops] on a job alert first!"
+                )
+
+            msg = [f"🎉 <b>Generated {len(paths)} Tailored Application Package(s):</b>\n"]
+            for p in paths[:8]:
+                msg.append(
+                    f"• <b>{_escape(p.name)}</b>\n"
+                    f"  📄 <code>anschreiben.html</code> & <code>lebenslauf.html</code>\n"
+                    f"  📁 <code>career-ops/data/applications/{_escape(p.name)}/</code>\n"
+                )
+            if len(paths) > 8:
+                msg.append(f"<i>...and {len(paths)-8} more packages</i>\n")
+            msg.append("💡 <i>Files are ready for print / PDF export in career-ops directory!</i>")
+            return "\n".join(msg)
+        except Exception as e:
+            return f"❌ Generation error: {_escape(str(e))}"
+
+    def _run_sweep_content(self) -> str:
+        """Trigger an on-demand sweep and return formatted report."""
+        if self.on_sweep_request:
+            try:
+                counts = self.on_sweep_request()
+                total = sum(counts.values())
+                return (
+                    f"🏁 <b>Sweep Complete!</b>\n\n"
+                    f"Total new jobs: <b>{total}</b>\n"
+                    f"• Arbeitsagentur: <b>{counts.get('arbeitsagentur', 0)}</b>\n"
+                    f"• Personio ATS: <b>{counts.get('ats', 0)}</b>\n"
+                    f"• Email Stream: <b>{counts.get('email', 0)}</b>\n\n"
+                    f"New listings matched and queued alerts dispatched!"
+                )
+            except Exception as e:
+                return f"❌ Sweep failed: {_escape(str(e))}"
+        return "ℹ️ On-demand sweep trigger is not linked in this mode."
+
+    def _handle_menu_callback(
+        self, callback_id: Optional[str], data: str, message_id: Optional[int]
+    ) -> None:
+        """Handle inline button callback navigation inside dashboard cards."""
+        action = data[len("m:") :].strip()
+        logger.info(f"Handling menu callback: action={action}, message_id={message_id}")
+
+        if callback_id:
+            try:
+                toast = "Updating..."
+                if action == "eval":
+                    toast = "Evaluating positions..."
+                elif action == "gen":
+                    toast = "Generating documents..."
+                elif action == "sweep":
+                    toast = "Running live sweep..."
+                self.notifier.answer_callback_query(callback_query_id=callback_id, text=toast)
+            except Exception as err:
+                logger.debug(f"Failed to answer callback query: {err}")
+
+        if not message_id:
+            return
+
+        try:
+            if action == "main":
+                text = self._build_dashboard_content()
+                markup = build_dashboard_inline_keyboard()
+                self.notifier.edit_message_text(message_id=message_id, text=text, reply_markup=markup)
+
+            elif action == "pipe":
+                text = self._build_pipeline_content()
+                markup = build_pipeline_inline_keyboard()
+                self.notifier.edit_message_text(message_id=message_id, text=text, reply_markup=markup)
+
+            elif action == "prof":
+                from src.career_ops.profile_manager import ProfileManager
+                pm = ProfileManager()
+                text = pm.format_summary()
+                markup = build_profile_inline_keyboard()
+                self.notifier.edit_message_text(message_id=message_id, text=text, reply_markup=markup)
+
+            elif action == "conf":
+                text = self._build_config_content()
+                markup = build_config_inline_keyboard()
+                self.notifier.edit_message_text(message_id=message_id, text=text, reply_markup=markup)
+
+            elif action == "eval":
+                text = self._run_evaluation_content()
+                markup = build_pipeline_inline_keyboard()
+                self.notifier.edit_message_text(message_id=message_id, text=text, reply_markup=markup)
+
+            elif action == "gen":
+                text = self._run_generation_content()
+                markup = build_pipeline_inline_keyboard()
+                self.notifier.edit_message_text(message_id=message_id, text=text, reply_markup=markup)
+
+            elif action == "sweep":
+                text = self._run_sweep_content()
+                markup = build_dashboard_inline_keyboard()
+                self.notifier.edit_message_text(message_id=message_id, text=text, reply_markup=markup)
+
+            elif action == "help":
+                text = (
+                    "ℹ️ <b>Quick Control Guide:</b>\n\n"
+                    "1. <b>Persistent Menu:</b> Use the 8 buttons at the bottom of your chat window.\n"
+                    "2. <b>Interactive Dashboard:</b> Tap buttons on cards to inspect pipeline & configuration.\n"
+                    "3. <b>CV Upload:</b> Send your PDF / Word / Text resume directly to this chat.\n"
+                    "4. <b>Text Commands:</b> Type /help for all advanced command syntaxes."
+                )
+                markup = build_back_inline_keyboard()
+                self.notifier.edit_message_text(message_id=message_id, text=text, reply_markup=markup)
+
+            elif action == "hint_cv":
+                text = (
+                    "📄 <b>How to Ingest Your CV:</b>\n\n"
+                    "• <b>Option 1 (Recommended):</b> Attach and send your CV document (.pdf, .txt, or .md) directly into this chat.\n"
+                    "• <b>Option 2:</b> Use <code>/feed_cv &lt;paste text&gt;</code> to paste raw resume text.\n\n"
+                    "The system automatically extracts your contact details, chemical methods, analytical instruments, and skills."
+                )
+                markup = build_profile_inline_keyboard()
+                self.notifier.edit_message_text(message_id=message_id, text=text, reply_markup=markup)
+
+            elif action == "hint_prof":
+                text = (
+                    "✏️ <b>Candidate Profile Commands:</b>\n\n"
+                    "• <code>/set_name &lt;Full Name&gt;</code>\n"
+                    "• <code>/set_title &lt;Title / Degree&gt;</code>\n"
+                    "• <code>/set_contact email | phone | city</code>\n"
+                    "• <code>/add_skill HPLC, GC-MS, Titration, GMP</code>\n"
+                    "• <code>/set_skills HPLC, UV-Vis, GC</code> (overwrite)\n"
+                    "• <code>/set_salary ca. 65.000 € brutto p.a.</code>\n"
+                    "• <code>/set_availability ab sofort / 1 Monat</code>\n"
+                    "• <code>/feed_template &lt;template text&gt;</code>"
+                )
+                markup = build_profile_inline_keyboard()
+                self.notifier.edit_message_text(message_id=message_id, text=text, reply_markup=markup)
+
+            elif action == "hint_kw":
+                text = (
+                    "🔍 <b>Keyword Configuration:</b>\n\n"
+                    "• <code>/add_keyword Chemiker, QC</code> — Add target titles or skills\n"
+                    "• <code>/del_keyword Analyst</code> — Remove a keyword\n"
+                    "• <code>/set_keywords Chemiker, Analytik, HPLC</code> — Overwrite all keywords"
+                )
+                markup = build_config_inline_keyboard()
+                self.notifier.edit_message_text(message_id=message_id, text=text, reply_markup=markup)
+
+            elif action == "hint_loc":
+                text = (
+                    "📍 <b>Location & Radius:</b>\n\n"
+                    "• <code>/add_location Berlin, Potsdam</code> — Add search locations\n"
+                    "• <code>/del_location München</code> — Remove location\n"
+                    "• <code>/set_locations Berlin, Frankfurt</code> — Overwrite locations\n"
+                    "• <code>/set_radius 75</code> — Set search radius in km"
+                )
+                markup = build_config_inline_keyboard()
+                self.notifier.edit_message_text(message_id=message_id, text=text, reply_markup=markup)
+
+            elif action == "reset_conf":
+                self.db.delete_setting("keywords")
+                self.db.delete_setting("locations")
+                self.db.delete_setting("radius_km")
+                self.db.delete_setting("personio_companies")
+                self._notify_change()
+                text = "🔄 <b>Configuration Reset!</b>\n\nAll settings reverted to <code>config.yaml</code> defaults.\n\n" + self._build_config_content()
+                markup = build_config_inline_keyboard()
+                self.notifier.edit_message_text(message_id=message_id, text=text, reply_markup=markup)
+
+        except Exception as e:
+            logger.error(f"Error handling menu callback '{action}': {e}", exc_info=True)
+
     def _cmd_help(self) -> None:
         help_text = (
             "🤖 <b>Job Pulse & Career-Ops Command Center</b>\n\n"
+            "<b>🎛 Interactive UI Menu:</b>\n"
+            "• Tap any button on your bottom drawer for one-click access!\n"
+            "• Type /menu or /dashboard to display the interactive card.\n\n"
             "<b>🎯 Career-Ops Application Engine:</b>\n"
             "• /pipeline — View active pipeline status and match scores\n"
             "• /evaluate — Run match scoring against your candidate profile\n"
@@ -331,32 +711,13 @@ class TelegramCallbackHandler:
             "<b>🚀 On-Demand Actions:</b>\n"
             "• /sweep — Trigger an immediate live scan across all scrapers"
         )
-        self.notifier.send_message(help_text)
+        self.notifier.send_message(help_text, reply_markup=build_main_reply_keyboard())
 
     def _cmd_show_pipeline(self) -> None:
-        try:
-            from src.career_ops.pipeline_manager import PipelineManager
-            mgr = PipelineManager(pipeline_path=self.pipeline_path)
-            entries = mgr.load_entries()
-            if not entries:
-                self.notifier.send_message(
-                    "ℹ️ No jobs currently in pipeline. Tap <b>[📥 Queue Career-Ops]</b> on any job alert to add positions!"
-                )
-                return
-
-            lines = ["📋 <b>Career-Ops Application Pipeline:</b>\n"]
-            for idx, e in enumerate(entries, start=1):
-                lines.append(
-                    f"<b>{idx}. {_escape(e.company)}</b>\n"
-                    f"   💼 {_escape(e.role)}\n"
-                    f"   📍 {_escape(e.location)} | 🏷 <b>{_escape(e.status)}</b>\n"
-                    f"   🎯 <b>Score:</b> {_escape(e.match_score)}\n"
-                )
-            lines.append("💡 <i>Use /evaluate to update scores or /generate to build application documents.</i>")
-            self.notifier.send_message("\n".join(lines))
-        except Exception as e:
-            logger.error(f"Error displaying pipeline: {e}")
-            self.notifier.send_message(f"❌ Error loading pipeline: {_escape(str(e))}")
+        self.notifier.send_message(
+            self._build_pipeline_content(),
+            reply_markup=build_main_reply_keyboard(),
+        )
 
     def _cmd_trigger_evaluate(self) -> None:
         self.notifier.send_message("🔍 <i>Scraping job descriptions and scoring against your profile...</i>")
@@ -365,7 +726,10 @@ class TelegramCallbackHandler:
             mgr = PipelineManager(pipeline_path=self.pipeline_path)
             results = mgr.evaluate_all()
             if not results:
-                self.notifier.send_message("ℹ️ No queued positions pending evaluation. Tap [📥 Queue Career-Ops] on new alerts first.")
+                self.notifier.send_message(
+                    "ℹ️ No queued positions pending evaluation. Tap [📥 Queue Career-Ops] on new alerts first.",
+                    reply_markup=build_main_reply_keyboard(),
+                )
                 return
 
             msg = [f"🎯 <b>Evaluated {len(results)} Position(s):</b>\n"]
@@ -376,7 +740,7 @@ class TelegramCallbackHandler:
                     f"  Matched: {_escape(', '.join(ev.matched_skills[:5])) or 'Allgemeine Passung'}\n"
                 )
             msg.append("\n💡 <i>Type /generate to produce customized cover letters & CVs.</i>")
-            self.notifier.send_message("\n".join(msg))
+            self.notifier.send_message("\n".join(msg), reply_markup=build_main_reply_keyboard())
         except Exception as e:
             logger.error(f"Error evaluating pipeline: {e}")
             self.notifier.send_message(f"❌ Error during evaluation: {_escape(str(e))}")
@@ -389,7 +753,10 @@ class TelegramCallbackHandler:
             mgr.evaluate_all()
             paths = mgr.generate_all_applications()
             if not paths:
-                self.notifier.send_message("ℹ️ No positions ready. Tap [📥 Queue Career-Ops] on a job first!")
+                self.notifier.send_message(
+                    "ℹ️ No positions ready. Tap [📥 Queue Career-Ops] on a job first!",
+                    reply_markup=build_main_reply_keyboard(),
+                )
                 return
 
             msg = [f"🎉 <b>Generated {len(paths)} Tailored Application Package(s):</b>\n"]
@@ -400,30 +767,16 @@ class TelegramCallbackHandler:
                     f"  📁 <code>career-ops/data/applications/{_escape(p.name)}/</code>\n"
                 )
             msg.append("💡 <i>Files are ready for print / PDF export in your career-ops directory!</i>")
-            self.notifier.send_message("\n".join(msg))
+            self.notifier.send_message("\n".join(msg), reply_markup=build_main_reply_keyboard())
         except Exception as e:
             logger.error(f"Error generating applications: {e}")
             self.notifier.send_message(f"❌ Error generating applications: {_escape(str(e))}")
 
     def _cmd_show_config(self) -> None:
-        keywords = self._get_active_keywords()
-        locations = self._get_active_locations()
-        radius = self._get_active_radius()
-        companies = self._get_active_companies()
-
-        kw_bullets = "\n".join([f"  • {_escape(k)}" for k in keywords]) if keywords else "  <i>(none)</i>"
-        loc_bullets = "\n".join([f"  • {_escape(l)}" for l in locations]) if locations else "  <i>(none)</i>"
-        comp_bullets = "\n".join([f"  • {_escape(c)}" for c in companies]) if companies else "  <i>(none)</i>"
-
-        msg = (
-            "⚙️ <b>Active Scraping Configuration</b>\n\n"
-            f"🔍 <b>Search Keywords ({len(keywords)}):</b>\n{kw_bullets}\n\n"
-            f"📍 <b>Locations ({len(locations)}):</b>\n{loc_bullets}\n\n"
-            f"📏 <b>Radius:</b> {radius} km\n\n"
-            f"🏢 <b>Target Personio ATS ({len(companies)}):</b>\n{comp_bullets}\n\n"
-            "💡 <i>Tip: Use /add_keyword, /add_location, /set_radius or /help to modify.</i>"
+        self.notifier.send_message(
+            self._build_config_content(),
+            reply_markup=build_main_reply_keyboard(),
         )
-        self.notifier.send_message(msg)
 
     def _cmd_add_keyword(self, args: str) -> None:
         if not args:
@@ -614,7 +967,7 @@ class TelegramCallbackHandler:
         try:
             from src.career_ops.profile_manager import ProfileManager
             pm = ProfileManager()
-            self.notifier.send_message(pm.format_summary())
+            self.notifier.send_message(pm.format_summary(), reply_markup=build_main_reply_keyboard())
         except Exception as e:
             self.notifier.send_message(f"❌ Error loading profile: {_escape(str(e))}")
 

@@ -136,3 +136,168 @@ def test_unauthorized_chat_rejected(test_setup):
 
     assert handler._handle_message(unauth_msg) is False
     assert db.get_setting("keywords") is None
+
+
+def test_keyboard_builders():
+    from src.notifier import (
+        build_back_inline_keyboard,
+        build_config_inline_keyboard,
+        build_dashboard_inline_keyboard,
+        build_main_reply_keyboard,
+        build_pipeline_inline_keyboard,
+        build_profile_inline_keyboard,
+    )
+
+    # Reply keyboard
+    reply_kb = build_main_reply_keyboard()
+    assert reply_kb["resize_keyboard"] is True
+    assert reply_kb["is_persistent"] is True
+    assert len(reply_kb["keyboard"]) == 4
+
+    # Dashboard inline keyboard
+    dash_kb = build_dashboard_inline_keyboard()
+    assert any("m:pipe" in btn["callback_data"] for row in dash_kb["inline_keyboard"] for btn in row)
+    assert any("m:conf" in btn["callback_data"] for row in dash_kb["inline_keyboard"] for btn in row)
+
+    # Other inline keyboards
+    assert len(build_pipeline_inline_keyboard()["inline_keyboard"]) >= 2
+    assert len(build_profile_inline_keyboard()["inline_keyboard"]) >= 2
+    assert len(build_config_inline_keyboard()["inline_keyboard"]) >= 3
+    assert len(build_back_inline_keyboard()["inline_keyboard"]) == 1
+
+
+def test_reply_keyboard_buttons_dispatch(test_setup):
+    db, handler, mock_notifier, _, mock_sweep = test_setup
+
+    # 1. Pipeline button
+    assert handler._handle_message({"chat": {"id": 123456}, "text": "📋 Pipeline"}) is True
+    assert any("Pipeline" in call[0][0] for call in mock_notifier.send_message.call_args_list)
+
+    # 2. Settings button
+    assert handler._handle_message({"chat": {"id": 123456}, "text": "⚙️ Settings"}) is True
+    assert any("Active Scraping Configuration" in call[0][0] for call in mock_notifier.send_message.call_args_list)
+
+    # 3. Sweep button
+    assert handler._handle_message({"chat": {"id": 123456}, "text": "🚀 Sweep"}) is True
+    mock_sweep.assert_called()
+
+    # 4. Help button
+    assert handler._handle_message({"chat": {"id": 123456}, "text": "❓ Help"}) is True
+    assert any("Command Center" in call[0][0] for call in mock_notifier.send_message.call_args_list)
+
+
+def test_menu_dashboard_command(test_setup):
+    db, handler, mock_notifier, _, _ = test_setup
+
+    # /menu command
+    assert handler._handle_message({"chat": {"id": 123456}, "text": "/menu"}) is True
+    last_call = mock_notifier.send_message.call_args_list[-1]
+    menu_text = last_call[0][0] if last_call[0] else last_call[1].get("text", "")
+    assert "Control Dashboard" in menu_text
+    reply_markup = last_call[1].get("reply_markup")
+    assert "inline_keyboard" in reply_markup
+
+    # /start command
+    assert handler._handle_message({"chat": {"id": 123456}, "text": "/start"}) is True
+    all_texts = [c[0][0] if c[0] else c[1].get("text", "") for c in mock_notifier.send_message.call_args_list]
+    assert any("Welcome to Job Pulse" in t for t in all_texts)
+
+
+
+def test_menu_callbacks_in_place_editing(test_setup):
+    db, handler, mock_notifier, _, mock_sweep = test_setup
+
+    # 1. m:conf (scraping settings view)
+    cb_conf = {
+        "id": "cb_1",
+        "data": "m:conf",
+        "message": {"message_id": 42},
+    }
+    handler._handle_callback(cb_conf)
+    mock_notifier.answer_callback_query.assert_called_with(callback_query_id="cb_1", text="Updating...")
+    mock_notifier.edit_message_text.assert_called()
+    assert "Active Scraping Configuration" in mock_notifier.edit_message_text.call_args[1]["text"]
+
+    # 2. m:pipe (pipeline view)
+    cb_pipe = {
+        "id": "cb_2",
+        "data": "m:pipe",
+        "message": {"message_id": 42},
+    }
+    handler._handle_callback(cb_pipe)
+    assert "Pipeline" in mock_notifier.edit_message_text.call_args[1]["text"]
+
+    # 3. m:prof (profile view)
+    cb_prof = {
+        "id": "cb_3",
+        "data": "m:prof",
+        "message": {"message_id": 42},
+    }
+    handler._handle_callback(cb_prof)
+    assert mock_notifier.edit_message_text.called
+
+    # 4. m:sweep (live sweep view)
+    cb_sweep = {
+        "id": "cb_4",
+        "data": "m:sweep",
+        "message": {"message_id": 42},
+    }
+    handler._handle_callback(cb_sweep)
+    mock_sweep.assert_called()
+    assert "Sweep Complete" in mock_notifier.edit_message_text.call_args[1]["text"]
+
+    # 5. m:main (return to main dashboard)
+    cb_main = {
+        "id": "cb_5",
+        "data": "m:main",
+        "message": {"message_id": 42},
+    }
+    handler._handle_callback(cb_main)
+    assert "Control Dashboard" in mock_notifier.edit_message_text.call_args[1]["text"]
+
+    # 6. m:hint_cv and m:hint_prof
+    handler._handle_callback({"id": "cb_6", "data": "m:hint_cv", "message": {"message_id": 42}})
+    assert "How to Ingest Your CV" in mock_notifier.edit_message_text.call_args[1]["text"]
+
+    handler._handle_callback({"id": "cb_7", "data": "m:hint_prof", "message": {"message_id": 42}})
+    assert "/set_name" in mock_notifier.edit_message_text.call_args[1]["text"]
+
+    # 7. m:reset_conf
+    db.set_setting("keywords", ["temporary"])
+    handler._handle_callback({"id": "cb_8", "data": "m:reset_conf", "message": {"message_id": 42}})
+    assert db.get_setting("keywords") is None
+    assert "Configuration Reset" in mock_notifier.edit_message_text.call_args[1]["text"]
+
+
+def test_telegram_notifier_edit_and_commands():
+    from unittest.mock import patch
+    from src.notifier import TelegramNotifier
+
+    notifier = TelegramNotifier(bot_token="test_token", chat_id="123")
+
+    # Test edit_message_text
+    with patch("httpx.Client.post") as mock_post:
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = {"ok": True, "result": {"message_id": 42}}
+
+        res = notifier.edit_message_text(message_id=42, text="Hello World")
+        assert res["ok"] is True
+        mock_post.assert_called_once()
+        assert "editMessageText" in mock_post.call_args[0][0]
+
+    # Test edit_message_text with unmodified message (400 Bad Request)
+    with patch("httpx.Client.post") as mock_post:
+        mock_post.return_value.status_code = 400
+        mock_post.return_value.text = "Bad Request: message is not modified"
+        res = notifier.edit_message_text(message_id=42, text="Unchanged")
+        assert res.get("result") == "not modified"
+
+    # Test set_my_commands
+    with patch("httpx.Client.post") as mock_post:
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = {"ok": True, "result": True}
+        res = notifier.set_my_commands()
+        assert res["ok"] is True
+        assert "setMyCommands" in mock_post.call_args[0][0]
+
+
