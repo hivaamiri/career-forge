@@ -301,3 +301,34 @@ def test_telegram_notifier_edit_and_commands():
         assert "setMyCommands" in mock_post.call_args[0][0]
 
 
+def test_evaluate_when_already_evaluated(test_setup, tmp_path):
+    db, handler, mock_notifier, _, _ = test_setup
+    pipeline_file = tmp_path / "pipeline.md"
+    pipeline_file.write_text(
+        "# Pipeline\n\n"
+        "| Company | Role | Location | Source | URL | Date Added | Status | Match Score | Notes |\n"
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+        "| Bayer AG | QC Analyst | Berlin | StepStone | [url](https://example.com/job) | 2026-10-20 | Evaluated | 85% (High) | Good match |\n"
+    )
+    handler.pipeline_path = pipeline_file
+
+    assert handler._handle_message({"chat": {"id": 123456}, "text": "/evaluate"}) is True
+    all_texts = [c[0][0] if c[0] else c[1].get("text", "") for c in mock_notifier.send_message.call_args_list]
+    # Must NOT say "no queued positions pending evaluation"
+    assert not any("No queued positions pending evaluation" in t for t in all_texts)
+    # Must show existing match scores
+    assert any("Bayer AG" in t and "85% (High)" in t for t in all_texts)
+
+
+def test_evaluate_empty_pipeline(test_setup, tmp_path):
+    db, handler, mock_notifier, _, _ = test_setup
+    pipeline_file = tmp_path / "empty_pipeline.md"
+    pipeline_file.write_text("# Pipeline\n\n| Company | Role |\n| --- | --- |\n")
+    handler.pipeline_path = pipeline_file
+
+    assert handler._handle_message({"chat": {"id": 123456}, "text": "/evaluate"}) is True
+    all_texts = [c[0][0] if c[0] else c[1].get("text", "") for c in mock_notifier.send_message.call_args_list]
+    assert any("No jobs currently in pipeline" in t for t in all_texts)
+
+
+

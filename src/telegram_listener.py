@@ -117,6 +117,7 @@ class TelegramCallbackHandler:
             return
 
         logger.info(f"Received Queue Career-Ops callback for job_id={job_id}")
+        job_record = self.db.get_job(job_id)
         success, message_text = queue_job_to_careerops(
             job_id=job_id,
             db=self.db,
@@ -138,23 +139,55 @@ class TelegramCallbackHandler:
             except Exception as err:
                 logger.warning(f"Failed to answer callback query: {err}")
 
-        # When queued, trigger automated evaluation and report match score
-        if success:
-            try:
-                from src.career_ops.pipeline_manager import PipelineManager
-                mgr = PipelineManager(pipeline_path=self.pipeline_path)
-                eval_results = mgr.evaluate_all()
-                for entry, ev in eval_results:
-                    if entry.company in message_text or job_id in entry.url:
-                        self.notifier.send_message(
-                            f"🎯 <b>Match Score: {ev.overall_score}% ({ev.classification.split(' ')[0]})</b>\n"
-                            f"📋 <b>Role:</b> {_escape(entry.role)} @ {_escape(entry.company)}\n"
-                            f"✅ <b>Matched:</b> {_escape(', '.join(ev.matched_skills[:6])) or 'Allgemeine Passung'}\n"
-                            f"💡 <i>Type /generate to draft tailored cover letter & resume!</i>"
-                        )
+        # When queued (or already queued), evaluate and report match score to user
+        try:
+            from src.career_ops.pipeline_manager import PipelineManager
+            mgr = PipelineManager(pipeline_path=self.pipeline_path)
+            eval_results = mgr.evaluate_all(force=False)
+
+            target_ev = None
+            target_entry = None
+            for entry, ev in eval_results:
+                if job_record and (
+                    job_record.canonical_url in entry.url
+                    or entry.url in job_record.canonical_url
+                    or job_record.company.lower() in entry.company.lower()
+                    or job_record.title.lower() in entry.role.lower()
+                ):
+                    target_ev = ev
+                    target_entry = entry
+                    break
+
+            if not target_entry and eval_results:
+                target_entry, target_ev = eval_results[-1]
+
+            if not target_entry:
+                for entry in mgr.load_entries():
+                    if job_record and (
+                        job_record.canonical_url in entry.url
+                        or entry.url in job_record.canonical_url
+                        or job_record.company.lower() in entry.company.lower()
+                    ):
+                        target_entry = entry
                         break
-            except Exception as ev_err:
-                logger.warning(f"Auto-evaluation error: {ev_err}")
+
+            if target_ev and target_entry:
+                self.notifier.send_message(
+                    f"🎯 <b>Match Score: {target_ev.overall_score}% ({target_ev.classification.split(' ')[0]})</b>\n"
+                    f"📋 <b>Role:</b> {_escape(target_entry.role)} @ {_escape(target_entry.company)}\n"
+                    f"✅ <b>Matched:</b> {_escape(', '.join(target_ev.matched_skills[:6])) or 'Allgemeine Passung'}\n"
+                    f"💡 <i>Tap [✍️ Generate] to draft tailored cover letter & resume!</i>",
+                    reply_markup=build_main_reply_keyboard(),
+                )
+            elif target_entry and target_entry.match_score:
+                self.notifier.send_message(
+                    f"🎯 <b>Position in Pipeline: {target_entry.match_score}</b>\n"
+                    f"📋 <b>Role:</b> {_escape(target_entry.role)} @ {_escape(target_entry.company)}\n"
+                    f"💡 <i>Tap [✍️ Generate] to draft tailored cover letter & resume!</i>",
+                    reply_markup=build_main_reply_keyboard(),
+                )
+        except Exception as ev_err:
+            logger.warning(f"Evaluation error: {ev_err}")
 
     def _handle_document(self, message: Dict[str, Any], document: Dict[str, Any]) -> None:
         """Handle incoming CV document files (PDF, Markdown, Text)."""
@@ -295,7 +328,7 @@ class TelegramCallbackHandler:
         elif command == "/pipeline":
             self._cmd_show_pipeline()
         elif command == "/evaluate":
-            self._cmd_trigger_evaluate()
+            self._cmd_trigger_evaluate(args)
         elif command == "/generate":
             self._cmd_trigger_generate()
         elif command == "/profile":
@@ -473,24 +506,38 @@ class TelegramCallbackHandler:
         try:
             from src.career_ops.pipeline_manager import PipelineManager
             mgr = PipelineManager(pipeline_path=self.pipeline_path)
-            results = mgr.evaluate_all()
-            if not results:
+            entries = mgr.load_entries()
+            if not entries:
                 return (
-                    "ℹ️ <b>Evaluation: No Positions Pending</b>\n\n"
-                    "Tap <b>[📥 Queue Career-Ops]</b> on new alerts first to add positions!"
+                    "ℹ️ <b>Pipeline Empty</b>\n\n"
+                    "Tap <b>[📥 Queue Career-Ops]</b> on new job alerts first to add positions!"
                 )
 
-            msg = [f"🎯 <b>Evaluated {len(results)} Position(s):</b>\n"]
-            for entry, ev in results[:8]:
-                msg.append(
-                    f"• <b>{_escape(entry.company)}</b>: <b>{ev.overall_score}%</b> ({ev.classification.split(' ')[0]})\n"
-                    f"  Role: {_escape(entry.role)}\n"
-                    f"  Matched: {_escape(', '.join(ev.matched_skills[:5])) or 'Allgemeine Passung'}\n"
-                )
-            if len(results) > 8:
-                msg.append(f"<i>...and {len(results)-8} more positions</i>\n")
-            msg.append("💡 <i>Tap [✍️ Generate Docs] to draft tailored cover letters & CVs.</i>")
-            return "\n".join(msg)
+            results = mgr.evaluate_all(force=False)
+            if results:
+                msg = [f"🎯 <b>Evaluated {len(results)} Position(s):</b>\n"]
+                for entry, ev in results[:8]:
+                    msg.append(
+                        f"• <b>{_escape(entry.company)}</b>: <b>{ev.overall_score}%</b> ({ev.classification.split(' ')[0]})\n"
+                        f"  Role: {_escape(entry.role)}\n"
+                        f"  Matched: {_escape(', '.join(ev.matched_skills[:5])) or 'Allgemeine Passung'}\n"
+                    )
+                if len(results) > 8:
+                    msg.append(f"<i>...and {len(results)-8} more positions</i>\n")
+                msg.append("💡 <i>Tap [✍️ Generate Docs] to draft tailored cover letters & CVs.</i>")
+                return "\n".join(msg)
+            else:
+                msg = [f"🎯 <b>Pipeline Match Scores ({len(entries)} Position{'s' if len(entries) != 1 else ''}):</b>\n"]
+                for entry in entries[:8]:
+                    msg.append(
+                        f"• <b>{_escape(entry.company)}</b>: <b>{_escape(entry.match_score)}</b>\n"
+                        f"  Role: {_escape(entry.role)}\n"
+                        f"  Status: 🏷 <b>{_escape(entry.status)}</b>\n"
+                    )
+                if len(entries) > 8:
+                    msg.append(f"<i>...and {len(entries)-8} more positions</i>\n")
+                msg.append("💡 <i>All positions scored! Tap [✍️ Generate Docs] to draft packages, or use <code>/evaluate force</code> to re-score.</i>")
+                return "\n".join(msg)
         except Exception as e:
             return f"❌ Evaluation error: {_escape(str(e))}"
 
@@ -499,9 +546,27 @@ class TelegramCallbackHandler:
         try:
             from src.career_ops.pipeline_manager import PipelineManager
             mgr = PipelineManager(pipeline_path=self.pipeline_path)
+            entries = mgr.load_entries()
+            if not entries:
+                return (
+                    "ℹ️ <b>Pipeline Empty</b>\n\n"
+                    "Tap <b>[📥 Queue Career-Ops]</b> on new job alerts first to add positions!"
+                )
+
             mgr.evaluate_all()
             paths = mgr.generate_all_applications()
             if not paths:
+                # Check if applications were already drafted
+                drafted = [e for e in entries if e.status.lower() in ["drafted", "applied"]]
+                if drafted:
+                    msg = [f"📄 <b>Application Packages Already Generated ({len(drafted)}):</b>\n"]
+                    for d in drafted[:8]:
+                        msg.append(
+                            f"• <b>{_escape(d.company)}</b> — {_escape(d.role)}\n"
+                            f"  Status: 🏷 {_escape(d.status)} | Score: {_escape(d.match_score)}\n"
+                        )
+                    msg.append("💡 <i>Check <code>career-ops/data/applications/</code> for print-ready HTML & MD files.</i>")
+                    return "\n".join(msg)
                 return (
                     "ℹ️ <b>Application Generation</b>\n\n"
                     "No positions ready. Tap [📥 Queue Career-Ops] on a job alert first!"
@@ -719,28 +784,44 @@ class TelegramCallbackHandler:
             reply_markup=build_main_reply_keyboard(),
         )
 
-    def _cmd_trigger_evaluate(self) -> None:
+    def _cmd_trigger_evaluate(self, args: str = "") -> None:
         self.notifier.send_message("🔍 <i>Scraping job descriptions and scoring against your profile...</i>")
         try:
             from src.career_ops.pipeline_manager import PipelineManager
             mgr = PipelineManager(pipeline_path=self.pipeline_path)
-            results = mgr.evaluate_all()
-            if not results:
+            entries = mgr.load_entries()
+            if not entries:
                 self.notifier.send_message(
-                    "ℹ️ No queued positions pending evaluation. Tap [📥 Queue Career-Ops] on new alerts first.",
+                    "ℹ️ No jobs currently in pipeline. Tap <b>[📥 Queue Career-Ops]</b> on any job alert to add positions!",
                     reply_markup=build_main_reply_keyboard(),
                 )
                 return
 
-            msg = [f"🎯 <b>Evaluated {len(results)} Position(s):</b>\n"]
-            for entry, ev in results:
-                msg.append(
-                    f"• <b>{_escape(entry.company)}</b>: <b>{ev.overall_score}%</b> ({ev.classification.split(' ')[0]})\n"
-                    f"  Role: {_escape(entry.role)}\n"
-                    f"  Matched: {_escape(', '.join(ev.matched_skills[:5])) or 'Allgemeine Passung'}\n"
-                )
-            msg.append("\n💡 <i>Type /generate to produce customized cover letters & CVs.</i>")
-            self.notifier.send_message("\n".join(msg), reply_markup=build_main_reply_keyboard())
+            force = "force" in args.lower() or "all" in args.lower()
+            results = mgr.evaluate_all(force=force)
+
+            if results:
+                msg = [f"🎯 <b>Evaluated {len(results)} Position(s):</b>\n"]
+                for entry, ev in results:
+                    msg.append(
+                        f"• <b>{_escape(entry.company)}</b>: <b>{ev.overall_score}%</b> ({ev.classification.split(' ')[0]})\n"
+                        f"  Role: {_escape(entry.role)}\n"
+                        f"  Matched: {_escape(', '.join(ev.matched_skills[:5])) or 'Allgemeine Passung'}\n"
+                    )
+                msg.append("\n💡 <i>Tap [✍️ Generate] to draft tailored cover letters & CVs.</i>")
+                self.notifier.send_message("\n".join(msg), reply_markup=build_main_reply_keyboard())
+            else:
+                msg = [f"🎯 <b>Pipeline Match Scores ({len(entries)} Position{'s' if len(entries) != 1 else ''}):</b>\n"]
+                for entry in entries[:8]:
+                    msg.append(
+                        f"• <b>{_escape(entry.company)}</b>: <b>{_escape(entry.match_score)}</b>\n"
+                        f"  Role: {_escape(entry.role)}\n"
+                        f"  Status: 🏷 <b>{_escape(entry.status)}</b>\n"
+                    )
+                if len(entries) > 8:
+                    msg.append(f"<i>...and {len(entries) - 8} more positions</i>\n")
+                msg.append("\n💡 <i>All positions in pipeline are scored! Tap [✍️ Generate] to create application packages, or send <code>/evaluate force</code> to re-score.</i>")
+                self.notifier.send_message("\n".join(msg), reply_markup=build_main_reply_keyboard())
         except Exception as e:
             logger.error(f"Error evaluating pipeline: {e}")
             self.notifier.send_message(f"❌ Error during evaluation: {_escape(str(e))}")
@@ -750,9 +831,29 @@ class TelegramCallbackHandler:
         try:
             from src.career_ops.pipeline_manager import PipelineManager
             mgr = PipelineManager(pipeline_path=self.pipeline_path)
+            entries = mgr.load_entries()
+            if not entries:
+                self.notifier.send_message(
+                    "ℹ️ No jobs currently in pipeline. Tap <b>[📥 Queue Career-Ops]</b> on any job alert to add positions!",
+                    reply_markup=build_main_reply_keyboard(),
+                )
+                return
+
             mgr.evaluate_all()
             paths = mgr.generate_all_applications()
             if not paths:
+                drafted = [e for e in entries if e.status.lower() in ["drafted", "applied"]]
+                if drafted:
+                    msg = [f"📄 <b>Application Packages Already Generated ({len(drafted)}):</b>\n"]
+                    for d in drafted[:8]:
+                        msg.append(
+                            f"• <b>{_escape(d.company)}</b> — {_escape(d.role)}\n"
+                            f"  Status: 🏷 {_escape(d.status)} | Score: {_escape(d.match_score)}\n"
+                        )
+                    msg.append("💡 <i>Check <code>career-ops/data/applications/</code> for print-ready HTML & MD files.</i>")
+                    self.notifier.send_message("\n".join(msg), reply_markup=build_main_reply_keyboard())
+                    return
+
                 self.notifier.send_message(
                     "ℹ️ No positions ready. Tap [📥 Queue Career-Ops] on a job first!",
                     reply_markup=build_main_reply_keyboard(),

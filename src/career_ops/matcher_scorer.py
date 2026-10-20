@@ -98,6 +98,25 @@ class MatchScorer:
                 for word in re.findall(r"\b[A-Za-z0-9\-\/]{3,}\b", t):
                     skills.add(word.lower())
 
+        # Include title, target roles, summary, and education
+        title = self.profile.get("personal", {}).get("title", "")
+        for word in re.findall(r"\b[A-Za-z0-9\-\/]{3,}\b", title):
+            skills.add(word.lower())
+
+        for role in self.profile.get("preferences", {}).get("target_roles", []):
+            skills.add(role.strip().lower())
+            for word in re.findall(r"\b[A-Za-z0-9\-\/]{3,}\b", role):
+                skills.add(word.lower())
+
+        for edu in self.profile.get("education", []):
+            deg = edu.get("degree", "")
+            for word in re.findall(r"\b[A-Za-z0-9\-\/]{3,}\b", deg):
+                skills.add(word.lower())
+
+        summary = self.profile.get("summary", "")
+        for word in re.findall(r"\b[A-Za-z0-9\-\/]{3,}\b", summary):
+            skills.add(word.lower())
+
         return skills
 
     def evaluate(self, job: ScrapedJob) -> MatchEvaluation:
